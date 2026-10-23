@@ -13,7 +13,7 @@ DSH 用 launch token 交换后签发的签名 cookie，绑定浏览器看到的 
 _Avoid_: token, session
 
 **Supervisor**:
-拥有 `dsh` 子进程的组件：启动它、把它的输出镜像成容器日志、持有它当前的 launch token、传播退出码。
+拥有 `dsh` 子进程的组件：启动它、把它的输出镜像成容器日志、持有它当前的 launch token、传播退出码；web 模式下还内置把单个具体容器地址转发到 DSH 回环监听的 forwarder。
 _Avoid_: entrypoint, manager, wrapper
 
 **Proxy**:
@@ -21,5 +21,5 @@ _Avoid_: entrypoint, manager, wrapper
 _Avoid_: gateway, Caddy, relay
 
 **Relay**:
-现有的原始 TCP 端口转发层，只搬运字节、不解析 HTTP；Web proxy 上线后在 web 模式退役。
+已退役的原始 TCP 端口转发层，只搬运字节、不解析 HTTP；#13 起 web 模式改由 supervisor 内置的 forwarder 承担，仅作为历史称谓保留。
 _Avoid_: proxy, forwarder

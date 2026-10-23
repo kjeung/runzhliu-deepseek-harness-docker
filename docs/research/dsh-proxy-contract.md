@@ -16,6 +16,13 @@ otherwise.
 - **Non-goal:** this document is not a design doc for the final code. It fixes the contract
   and the acceptance tests so the implementation has a target it cannot quietly miss.
 
+> **Errata (2026-10-24, #13):** the raw TCP relay named in this note
+> (`scripts/dsh-web-relay.cjs` and its test) retired when the DSH supervisor
+> took ownership of `dsh`. The concrete-address forwarder and the in-memory
+> launch token now live in `scripts/dsh-web-supervisor.cjs`, and the proxy
+> designed here consumes that supervisor boundary. Everything below is the
+> 2026-10-20 capture and is kept as evidence, not as current state.
+
 ---
 
 ## 0. Verdict
@@ -665,7 +672,8 @@ DSH package sources (version `0.2.1-rc.2`, resolved under
 
 This repository:
 
-- `scripts/dsh-web-relay.cjs`, `scripts/dsh-web-relay.test.cjs` — current relay and its tests.
+- `scripts/dsh-web-relay.cjs`, `scripts/dsh-web-relay.test.cjs` — current relay and its tests
+  *(retired by #13; see the errata above and `scripts/dsh-web-supervisor.cjs`)*.
 - `scripts/deepseek-harness-entrypoint:191-194` — relay/DSH supervision.
 - `web.cordis.patch.yml`, `web.market.cordis.patch.yml` — composition overrides.
 - `compose.yaml:12,42`, `compose.lan.yaml`, `config/Caddyfile.lan`.
