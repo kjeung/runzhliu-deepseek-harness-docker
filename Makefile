@@ -131,7 +131,7 @@ helm-check:
 
 plugin-check:
 	node --check scripts/dsh-web-supervisor.cjs
-	node --test scripts/dsh-web-supervisor.test.cjs
+	node --test scripts/dsh-web-supervisor.test.cjs scripts/admin-version-policy.test.cjs
 	node --check plugins/dsh-browser-desktop/index.js
 	node --check plugins/dsh-browser-desktop/client.js
 	node --check scripts/dsh-market-repair-store
