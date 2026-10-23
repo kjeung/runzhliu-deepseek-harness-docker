@@ -1,9 +1,9 @@
 #!/bin/sh
 set -u
 
-dsh_pid=""
+supervisor_pid=""
+supervisor_exit_code=""
 desktop_pids=""
-relay_pid=""
 
 if [ -z "${CHROME_USER_DATA_DIR:-}" ]; then
   if [ "${CHROMIUM_FLAVOR:-debian}" = ungoogled ]; then
@@ -47,31 +47,27 @@ install_browser_plugins() {
     'official Playwright Browser Use provider'
 }
 
-stop_children() {
+# The supervisor forwards TERM to dsh and waits for it; the entrypoint drains
+# the desktop children after that, so no orphan survives docker stop.
+stop_desktop() {
   trap - INT TERM HUP
-  if [ -n "${dsh_pid}" ]; then
-    kill -TERM "${dsh_pid}" 2>/dev/null || true
-  fi
-  if [ -n "${relay_pid}" ]; then
-    kill -TERM "${relay_pid}" 2>/dev/null || true
-  fi
   for child_pid in ${desktop_pids}; do
     kill -TERM "${child_pid}" 2>/dev/null || true
   done
-  if [ -n "${dsh_pid}" ]; then
-    wait "${dsh_pid}" 2>/dev/null || true
-  fi
   for child_pid in ${desktop_pids}; do
     wait "${child_pid}" 2>/dev/null || true
   done
-  if [ -n "${relay_pid}" ]; then
-    wait "${relay_pid}" 2>/dev/null || true
-  fi
 }
 
 handle_signal() {
-  stop_children
-  exit 143
+  trap - INT TERM HUP
+  if [ -n "${supervisor_pid}" ] && kill -0 "${supervisor_pid}" 2>/dev/null; then
+    kill -TERM "${supervisor_pid}" 2>/dev/null || true
+    wait "${supervisor_pid}" 2>/dev/null
+    supervisor_exit_code=$?
+  fi
+  stop_desktop
+  exit "${supervisor_exit_code:-143}"
 }
 
 run_browser() {
@@ -188,23 +184,26 @@ for argument in "$@"; do
   esac
 done
 
-if [ "${is_web}" = 1 ]; then
-  node /opt/deepseek-harness/dsh-web-relay.cjs "$$" "$@" &
-  relay_pid=$!
-fi
-
 if [ "${is_web}" = 1 ] \
     && [ "${DSH_DESKTOP_ENABLED:-1}" = "1" ]; then
   start_desktop || {
-    stop_children
+    stop_desktop
     exit 1
   }
 fi
 
-/usr/local/bin/dsh "$@" &
-dsh_pid=$!
+if [ "${is_web}" = 1 ]; then
+  # The supervisor owns dsh, mirrors its output into the container log, keeps
+  # the launch token in memory, and forwards one concrete container address to
+  # DSH's loopback listener (the raw TCP relay retires). Its exit code is
+  # dsh's own, so restart policy and CI can tell a crash from a stop.
+  node /opt/deepseek-harness/dsh-web-supervisor.cjs "$@" &
+  supervisor_pid=$!
+  wait "${supervisor_pid}"
+  supervisor_exit_code=$?
+  stop_desktop
+  exit "${supervisor_exit_code}"
+fi
 
-wait "${dsh_pid}"
-exit_code=$?
-stop_children
-exit "${exit_code}"
+# Non-web CLI invocations bypass the supervisor and pass their exit code through.
+exec /usr/local/bin/dsh "$@"

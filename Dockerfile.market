@@ -41,6 +41,7 @@ COPY --chown=node:node web.market.cordis.patch.yml /opt/deepseek-harness/web.cor
 COPY scripts/deepseek-harness-entrypoint /usr/local/bin/deepseek-harness-entrypoint
 COPY scripts/deepseek-harness-market-entrypoint /usr/local/bin/deepseek-harness-market-entrypoint
 COPY scripts/dsh-market-repair-store /usr/local/bin/dsh-market-repair-store
+COPY scripts/dsh-web-supervisor.cjs /opt/deepseek-harness/dsh-web-supervisor.cjs
 
 USER root
 RUN chmod 0755 \
@@ -48,6 +49,7 @@ RUN chmod 0755 \
       /usr/local/bin/deepseek-harness-market-entrypoint \
       /usr/local/bin/dsh-market-repair-store \
     && test "$(node -p 'require("/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/dshmarket/package.json").version')" = "${DSH_MARKET_VERSION}" \
+    && node --check /opt/deepseek-harness/dsh-web-supervisor.cjs \
     && node -e "import('/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/dshmarket/lib/index.js')"
 USER node
 

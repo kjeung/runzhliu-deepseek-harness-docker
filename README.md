@@ -108,7 +108,7 @@ flowchart TB
 
 默认基础镜像选择非 slim 是面向 coding agent 的明确取舍，而不是追求最小体积。Debian 13 Trixie 将 glibc 从 Bookworm 的 2.36 提升到 2.41，能运行更多按新系统构建的二进制；官方 Node 非 slim 变体基于 `buildpack-deps`，自带编译器、`make`、`git`、`curl`、`file`、`unzip`、`wget`、`xz` 等开发工具，本项目再显式安装 `jq`、`less`、`ripgrep`、`rsync` 和 `zip`。代价是基础镜像压缩体积比 slim 大约增加 330 MB；Smoke Test 会同时检查 Trixie、glibc 2.41 和完整命令清单，避免后续升级意外退化。
 
-这里最需要强调的是 Web 监听：`0.2.1-alpha.2` 开始，Harness 的 CLI 和配置层都拒绝通配地址。本项目让 DSH 保持监听 `127.0.0.1:3080`，由入口脚本在**单个具体容器 IP** 上启动 TCP 中继，原样转发到回环地址，不修改 DSH 源码，也不改写 token、Cookie、Host/Origin 或 WebSocket 流量。这样既支持 Docker/Podman 端口映射，也保留 Kubernetes port-forward 和容器内健康检查。默认自动选择唯一的非回环 IPv4 地址（仅 IPv6 时选唯一的非链路本地地址）；多网卡存在歧义时拒绝启动，需显式设置 `DSH_WEB_RELAY_INTERFACE`。不支持 host networking 或 `--port 0`。
+这里最需要强调的是 Web 监听：`0.2.1-alpha.2` 开始，Harness 的 CLI 和配置层都拒绝通配地址。本项目让 DSH 保持监听 `127.0.0.1:3080`，由入口脚本拉起的 supervisor 在**单个具体容器 IP** 上监听并原样转发到回环地址；supervisor 同时拥有 `dsh` 子进程、把它的 stdout/stderr 逐行镜像进容器日志，并在内存里持有当前 launch token（不落文件），供后续代理交换使用。不修改 DSH 源码，也不改写 token、Cookie、Host/Origin 或 WebSocket 流量。这样既支持 Docker/Podman 端口映射，也保留 Kubernetes port-forward 和容器内健康检查。默认自动选择唯一的非回环 IPv4 地址（仅 IPv6 时选唯一的非链路本地地址）；多网卡存在歧义时拒绝启动，需显式设置 `DSH_WEB_RELAY_INTERFACE`。不支持 host networking 或 `--port 0`。
 
 默认 Compose 仍只发布宿主 `127.0.0.1`。需要受信任局域网访问时，显式叠加 `compose.lan.yaml`，由 Caddy 在指定 LAN 地址上终止 HTTPS、增加 Basic Auth，并把 noVNC 收进同一认证入口；DSH 仍执行自己的启动 token、签名 Cookie 与 Host/Origin 检查。直接改成 `-p 3080:3080`、NodePort、LoadBalancer 或公开 Ingress 仍会破坏这个安全模型。
 
@@ -510,7 +510,7 @@ docker compose exec deepseek-harness node -e "console.log(require('node:os').hom
 | `Dockerfile.market` | 从默认镜像派生、固定第三方市场版本的可选镜像 |
 | `Dockerfile.bwrap` | 为缺少 Landlock 的 Docker 主机提供 bubblewrap 的可选派生镜像 |
 | `web.cordis.patch.yml` | 回环 Web 监听与官方 Browser Use / 浏览器桌面集成 |
-| `scripts/dsh-web-relay.cjs` | 单个具体容器 IP 到 DSH 回环监听的原始 TCP 中继 |
+| `scripts/dsh-web-supervisor.cjs` | 拥有 `dsh` 子进程、逐行镜像日志、内存持有 launch token，并转发单个具体容器 IP 到 DSH 回环监听 |
 | `compose.yaml` | 持久化、回环端口和收紧后的运行时配置 |
 | `compose.market.yaml` | 显式选择第三方社区市场镜像的可选 Compose overlay |
 | `compose.bwrap.yaml` | 显式选择 bubblewrap 沙箱镜像并开放其所需命名空间操作的可选 overlay |

@@ -99,7 +99,7 @@ User code lives separately at `/workspace`. Compose combines a named `dsh-home` 
 | --- | --- | --- |
 | Node / glibc | Requires Node 22.19+ or 24+; some user binaries require a newer glibc | Pin the official non-slim `node:24-trixie`, Debian 13 with glibc 2.41 |
 | Native dependencies and Agent tools | `node-pty` or third-party plugins may need native builds; the Agent needs common development commands | Install DSH in a separate stage; intentionally retain the buildpack-deps toolchain at runtime and add `jq`, `less`, `ripgrep`, `rsync`, `zip`, and related tools |
-| Web bind | Both CLI and configuration reject wildcard addresses from `0.2.1-alpha.2` | Keep DSH on loopback; relay one concrete container IP; host ports 3080/6080 remain on `127.0.0.1` |
+| Web bind | Both CLI and configuration reject wildcard addresses from `0.2.1-alpha.2` | Keep DSH on loopback; the supervisor forwards one concrete container IP; host ports 3080/6080 remain on `127.0.0.1` |
 | Web security | Launch-token authentication, Host/Origin checks, and optional native TLS; noVNC is unauthenticated and tools can execute code | HTTP with loopback publication by default; optional Caddy HTTPS + Basic Auth; no public Ingress/LoadBalancer |
 | HMR | A config watcher needs Node internals after boot | Pass `--expose-internals` only to the DSH process, never through inherited `NODE_OPTIONS` |
 | Directory browser | Starts at `os.homedir()` | Point `HOME` at writable `/workspace` instead of read-only `/home/node` |
@@ -108,7 +108,7 @@ User code lives separately at `/workspace`. Compose combines a named `dsh-home` 
 
 Choosing the non-slim base is an explicit coding-agent trade-off rather than a smallest-image goal. Debian 13 Trixie raises glibc from Bookworm's 2.36 to 2.41, allowing more binaries built on recent systems to run. The official non-slim Node variant is based on `buildpack-deps` and already includes the compiler, `make`, `git`, `curl`, `file`, `unzip`, `wget`, and `xz`; this project explicitly adds `jq`, `less`, `ripgrep`, `rsync`, and `zip`. The trade-off is roughly 330 MB more compressed base-image data than slim. The smoke test asserts Trixie, glibc 2.41, and the complete command contract so a later upgrade cannot silently regress them.
 
-From `0.2.1-alpha.2`, both the Harness CLI and configuration reject wildcard listeners. This image keeps DSH on `127.0.0.1:3080` and starts a raw TCP relay on **one concrete container IP**. It does not modify DSH source or rewrite tokens, cookies, Host/Origin headers, or WebSocket traffic. This supports Docker/Podman port publication while preserving Kubernetes port-forward and in-container health checks. The relay selects a unique non-loopback IPv4 address, or a unique non-link-local IPv6 address on IPv6-only networks. Ambiguous multi-interface setups fail closed and require an explicit `DSH_WEB_RELAY_INTERFACE`. Host networking and `--port 0` are unsupported.
+From `0.2.1-alpha.2`, both the Harness CLI and configuration reject wildcard listeners. This image keeps DSH on `127.0.0.1:3080`, and a supervisor spawned by the entrypoint listens on **one concrete container IP** and forwards bytes to it; the same supervisor owns the `dsh` child, mirrors its stdout/stderr into the container log line by line, and holds the current launch token in memory (never on disk) for a later proxy exchange. It does not modify DSH source or rewrite tokens, cookies, Host/Origin headers, or WebSocket traffic. This supports Docker/Podman port publication while preserving Kubernetes port-forward and in-container health checks. The supervisor selects a unique non-loopback IPv4 address, or a unique non-link-local IPv6 address on IPv6-only networks. Ambiguous multi-interface setups fail closed and require an explicit `DSH_WEB_RELAY_INTERFACE`. Host networking and `--port 0` are unsupported.
 
 Default Compose still publishes only on host `127.0.0.1`. The opt-in `compose.lan.yaml` gateway terminates HTTPS on one selected LAN address, adds Basic Auth, and carries noVNC through the same authenticated origin while DSH continues to enforce its launch token, signed cookie, and Host/Origin checks. Changing the native ports to `-p 3080:3080`, NodePort, LoadBalancer, or a public Ingress still breaks the security model.
 
@@ -489,7 +489,7 @@ helm lint --strict charts/deepseek-harness
 helm template deepseek-harness charts/deepseek-harness >/dev/null
 ```
 
-Acceptance criteria: the CLI reports the pinned version; the dumped `webserver.config.host` is `127.0.0.1`, with a TCP relay on one concrete container IP; the unauthenticated root returns `401`, while the launch token exchanges for a cookie and loads the page; Compose reaches `healthy`; logs contain no plugin/config errors; the container does not try to hand off to a host browser; and Helm renders both persistent and ephemeral-storage variants. Build both `linux/amd64` and `linux/arm64` and actually spawn a PTY before publishing because terminal and sandbox dependencies include native code. The default entry points are `make verify`, `make build`, and `make smoke`; the optional market uses `make market-build` and `make market-smoke`, which also prove that the market package is absent from the default image.
+Acceptance criteria: the CLI reports the pinned version; the dumped `webserver.config.host` is `127.0.0.1`, with a supervisor forwarder on one concrete container IP; the unauthenticated root returns `401`, while the launch token exchanges for a cookie and loads the page; Compose reaches `healthy`; logs contain no plugin/config errors; the container does not try to hand off to a host browser; and Helm renders both persistent and ephemeral-storage variants. Build both `linux/amd64` and `linux/arm64` and actually spawn a PTY before publishing because terminal and sandbox dependencies include native code. The default entry points are `make verify`, `make build`, and `make smoke`; the optional market uses `make market-build` and `make market-smoke`, which also prove that the market package is absent from the default image.
 
 ## Troubleshooting
 
@@ -511,7 +511,7 @@ The last command must print `/workspace`. An `EACCES` under `/workspace` instead
 | `Dockerfile.market` | Optional derivative that pins a third-party market version on top of the default image |
 | `Dockerfile.bwrap` | Optional bubblewrap derivative for Docker hosts that cannot enforce Landlock |
 | `web.cordis.patch.yml` | Loopback Web listener and official Browser Use / browser-desktop integration |
-| `scripts/dsh-web-relay.cjs` | Raw TCP relay from one concrete container IP to DSH loopback |
+| `scripts/dsh-web-supervisor.cjs` | Owns the `dsh` child, mirrors its log, holds the launch token in memory, and forwards one concrete container IP to DSH loopback |
 | `compose.yaml` | Persistent, loopback-only, hardened local deployment |
 | `compose.market.yaml` | Optional Compose overlay that explicitly selects the third-party community market image |
 | `compose.bwrap.yaml` | Optional overlay that selects the bubblewrap image and permits its required namespace operations |

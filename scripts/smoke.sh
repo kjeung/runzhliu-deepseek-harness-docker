@@ -240,7 +240,7 @@ for attempt in $(seq 1 30); do
       const rows = ["/proc/net/tcp", "/proc/net/tcp6"].flatMap(file => fs.readFileSync(file, "utf8").trim().split("\n").slice(1))
       const listeners = rows.map(row => row.trim().split(/\s+/)).filter(row => row[3] === "0A" && row[1].endsWith(":0C08")).map(row => row[1].split(":")[0])
       if (listeners.some(address => /^0+$/.test(address))) throw new Error("wildcard Web listener")
-      if (!listeners.includes("0100007F") || listeners.length !== 2) throw new Error("expected DSH loopback plus exactly one concrete relay listener")
+      if (!listeners.includes("0100007F") || listeners.length !== 2) throw new Error("expected DSH loopback plus exactly one concrete supervisor forwarder listener")
     '; then
       echo "Web listener boundary check failed" >&2
       exit 1
@@ -366,6 +366,39 @@ for attempt in $(seq 1 30); do
     fi
     if docker logs "${container}" 2>&1 | grep --quiet 'opening the default browser'; then
       echo "dsh web attempted to open a host browser; the container command must include --no-open" >&2
+      exit 1
+    fi
+    # Spec #13: the launch token lives only in the container log and the
+    # supervisor's memory, never in a container file.
+    if ! docker exec "${container}" sh -c '
+      t="$1"; shift
+      ! grep -rlsF -- "$t" /home/node/.dsh /tmp /workspace /opt/deepseek-harness 2>/dev/null
+    ' _ "${launch_token}"; then
+      echo "launch token leaked into a container file" >&2
+      exit 1
+    fi
+    # Spec #13: docker stop unwinds tini -> entrypoint -> supervisor -> dsh
+    # with dsh's own clean shutdown code.
+    docker stop --time 30 "${container}" >/dev/null
+    stop_code="$(docker inspect --format '{{.State.ExitCode}}' "${container}")"
+    if [[ "${stop_code}" != "0" ]]; then
+      echo "docker stop left the container at exit code ${stop_code}; expected a clean supervised shutdown" >&2
+      exit 1
+    fi
+    # Spec #13: a dsh startup failure surfaces as the container's exit code,
+    # and the supervisor's mirror keeps dsh's own error visible in the log.
+    crash_container="deepseek-harness-smoke-crash-${suffix}"
+    set +e
+    crash_output="$(docker run --name "${crash_container}" "${image}" web --no-open --port 99999 </dev/null 2>&1)"
+    crash_code=$?
+    set -e
+    docker container rm --force "${crash_container}" >/dev/null 2>&1 || true
+    if [[ "${crash_code}" != "1" ]]; then
+      echo "expected the dsh startup failure to surface as container exit code 1, got ${crash_code}" >&2
+      exit 1
+    fi
+    if [[ "${crash_output}" != *"dsh: startup failed"* ]]; then
+      echo "the supervisor did not mirror dsh's startup failure into the container log" >&2
       exit 1
     fi
     if [[ -n "${expected_market_version}" ]]; then

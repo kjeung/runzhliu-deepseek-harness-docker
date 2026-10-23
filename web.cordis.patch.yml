@@ -1,6 +1,7 @@
-# DSH stays on loopback. The entrypoint relays one concrete container interface
-# to it without rewriting authentication or Host/Origin headers. Host-side
-# ports must remain loopback-only; this Web API can execute code.
+# DSH stays on loopback. The entrypoint's supervisor forwards one concrete
+# container interface to it without rewriting authentication or Host/Origin
+# headers. Host-side ports must remain loopback-only; this Web API can execute
+# code.
 - insert:
     # Official Browser Use owns model-facing page inspection and interaction.
     # Attach it to the same persistent Chromium shown by the desktop plugin so

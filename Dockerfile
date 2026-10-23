@@ -290,7 +290,7 @@ COPY --from=installer /opt/dsh-browser-use/node_modules/. /usr/local/lib/node_mo
 COPY scripts/chromium-docker /usr/local/bin/chromium-docker
 COPY scripts/dsh-container /usr/local/bin/dsh
 COPY scripts/deepseek-harness-entrypoint /usr/local/bin/deepseek-harness-entrypoint
-COPY scripts/dsh-web-relay.cjs /opt/deepseek-harness/dsh-web-relay.cjs
+COPY scripts/dsh-web-supervisor.cjs /opt/deepseek-harness/dsh-web-supervisor.cjs
 COPY plugins/dsh-browser-desktop /opt/deepseek-harness/plugins/dsh-browser-desktop
 
 RUN chmod 0755 /usr/local/bin/chromium-docker \
@@ -316,6 +316,7 @@ RUN chmod 0755 /usr/local/bin/chromium-docker \
     && test "$(node -p 'require("/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-browser-use/package.json").version')" = "${DSH_VERSION}" \
     && test "$(node -p 'require("/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-browser-use-playwright-mcp/package.json").version')" = "${DSH_VERSION}" \
     && node -e "Promise.all([import('/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-browser-use/lib/index.js'), import('/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@deepseek-ai/dsh-experimental-browser-use-playwright-mcp/lib/index.js')])" \
+    && node --check /opt/deepseek-harness/dsh-web-supervisor.cjs \
     && chromium-docker --version
 
 ENV DSH_HOME=/home/node/.dsh \

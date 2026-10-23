@@ -4,7 +4,9 @@ All notable changes to this project are documented here.
 
 ## Unreleased
 
-## 0.1.25 - 2026-10-17
+- Own the `dsh` child in web containers with a Node supervisor: mirror its stdout/stderr into the container log line by line, capture the launch token from the `dsh web:` line in memory bound to the child pid (`starting` → `ready` → `token-timeout`/`exited`, 120s budget), propagate the child exit code, and forward INT/TERM/HUP down the `tini` → entrypoint → supervisor → `dsh` chain. The raw TCP relay retires; the supervisor forwards one concrete container address to DSH loopback. Non-web CLI invocations bypass the supervisor and keep their own exit code (spec #13, ADR-0001).
+- Accept both the current single-URL launch line and the older single-line dual-URL shape (first 43-character token), reject non-URL `dsh web:` decoys and duplicate/empty `token` parameters, and keep the token out of supervisor diagnostics.
+- Replace the relay `node:test` suite with a supervisor spawn-boundary suite and extend the container smoke: the latest launch line stays greppable, no container file carries the token, `docker stop` exits cleanly, and a dsh startup failure surfaces as the container exit code with dsh's error visible in the log.
 
 - Upgrade the official runtime and Browser Use packages to `@deepseek-ai/dsh@0.2.1-rc.2`, with immutable container revision `0.2.1-rc.2-r1` and Helm chart `0.1.25`.
 - Include upstream DeepSeek-V4.1-Flash-1017 support and opt-in DeepSeek Search / Fetch APIs in Web Search settings; do not enable these APIs or change provider credentials automatically.
