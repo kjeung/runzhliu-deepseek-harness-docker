@@ -422,10 +422,25 @@ for attempt in $(seq 1 30); do
     set -e
     docker container rm --force "${crash_container}" >/dev/null 2>&1 || true
     if [[ "${crash_code}" != "1" ]]; then
-      echo "expected the dsh startup failure to surface as container exit code 1, got ${crash_code}" >&2
+      echo "expected the supervisor fixed-port rejection to surface as container exit code 1, got ${crash_code}" >&2
       exit 1
     fi
-    if [[ "${crash_output}" != *"dsh: startup failed"* ]]; then
+    if [[ "${crash_output}" != *"container Web proxy requires a fixed --port"* ]]; then
+      echo "the supervisor did not reject an invalid fixed port before spawning dsh" >&2
+      exit 1
+    fi
+    # A dsh-level startup failure must be mirrored verbatim with the exit code.
+    crash_container="deepseek-harness-smoke-crash-flag-${suffix}"
+    set +e
+    crash_output="$(docker run --name "${crash_container}" "${image}" web --no-open --definitely-not-an-option </dev/null 2>&1)"
+    crash_code=$?
+    set -e
+    docker container rm --force "${crash_container}" >/dev/null 2>&1 || true
+    if [[ "${crash_code}" != "1" ]]; then
+      echo "expected the dsh option failure to surface as container exit code 1, got ${crash_code}" >&2
+      exit 1
+    fi
+    if [[ "${crash_output}" != *"unknown option"* ]]; then
       echo "the supervisor did not mirror dsh's startup failure into the container log" >&2
       exit 1
     fi

@@ -297,6 +297,8 @@ COPY plugins/dsh-browser-desktop /opt/deepseek-harness/plugins/dsh-browser-deskt
 RUN chmod 0755 /usr/local/bin/chromium-docker \
         /usr/local/bin/dsh \
         /usr/local/bin/deepseek-harness-entrypoint \
+    && chmod 0644 /opt/deepseek-harness/dsh-web-supervisor.cjs \
+        /opt/deepseek-harness/dsh-web-proxy.cjs \
     && mkdir -p \
       /usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/@runzhliu \
       /opt/deepseek-harness/plugins/dsh-browser-desktop/node_modules/@deepseek-ai \
@@ -339,7 +341,8 @@ ENV DSH_HOME=/home/node/.dsh \
 
 COPY --chown=node:node web.cordis.patch.yml /opt/deepseek-harness/web.cordis.patch.yml
 
-RUN mkdir -p "${DSH_HOME}" /workspace \
+RUN chmod -R a+rX /opt/deepseek-harness/plugins /opt/deepseek-harness/web.cordis.patch.yml \
+    && mkdir -p "${DSH_HOME}" /workspace \
     && chown -R node:node "${DSH_HOME}" /workspace
 
 USER node
