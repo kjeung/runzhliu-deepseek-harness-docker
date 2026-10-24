@@ -13,8 +13,8 @@
 //     bound to { pid, startedAt }; the process exit invalidates it;
 //   - expose a queryable state machine: starting -> ready | token-timeout,
 //     then exited, with an explicit stop() reset for admin version switches;
-//   - replace the retired raw TCP relay: forward one concrete container
-//     address to DSH's loopback listener (byte-only, no HTTP interpretation);
+//   - load the HTTP/WS proxy that owns the container listener and performs the
+//     launch-token exchange, Host gate, and failure surfaces (spec #15);
 //   - propagate the child's exit code and forward INT/TERM/HUP down the
 //     chain tini -> entrypoint -> supervisor -> dsh, each hop waiting.
 //
@@ -22,14 +22,14 @@
 // below exist for scripts/dsh-web-supervisor.test.cjs and the container
 // smoke on purpose:
 //   DSH_WEB_SUPERVISOR_CHILD           executable that replaces /usr/local/bin/dsh
-//   DSH_WEB_SUPERVISOR_LISTEN_ADDRESS  forwarder bind host (default: fail-closed
-//                                      selectAddress())
-//   DSH_WEB_SUPERVISOR_NO_LISTENER=1   skip the forwarder entirely
+//   DSH_WEB_LISTEN_ADDRESS             proxy bind host (default: fail-closed
+//   DSH_WEB_SUPERVISOR_LISTEN_ADDRESS  legacy alias for the same value)
+//   DSH_WEB_SUPERVISOR_NO_LISTENER=1   skip the proxy listener entirely
 //   DSH_WEB_RELAY_INTERFACE            historical fail-closed interface knob
 
 const childProcess = require('node:child_process');
-const net = require('node:net');
 const os = require('node:os');
+const { createProxy, parseTrustedHosts, selectAddress, webPort } = require('./dsh-web-proxy.cjs');
 
 const LAUNCH_LINE_PREFIX = 'dsh web: ';
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -63,71 +63,6 @@ function extractLaunchToken(line) {
   const tokens = url.searchParams.getAll('token');
   if (tokens.length !== 1 || !TOKEN_PATTERN.test(tokens[0])) return null;
   return tokens[0];
-}
-
-// Select one concrete non-loopback address so Docker/Podman port publication
-// works without a wildcard listener. Ambiguous multi-interface setups fail
-// closed instead of guessing. DSH_WEB_RELAY_INTERFACE keeps its historical
-// name: the knob selects the interface, not the forwarder implementation.
-function selectAddress(interfaces, requestedInterface) {
-  const entries = Object.entries(interfaces).filter(([name]) => !requestedInterface || name === requestedInterface);
-  const addresses = entries.flatMap(([, rows]) => (rows || []).filter(row => !row.internal));
-  const ipv4 = addresses.filter(row => row.family === 'IPv4' && net.isIP(row.address) === 4 && !row.address.startsWith('127.') && row.address !== '0.0.0.0');
-  const ipv6 = addresses.filter(row => row.family === 'IPv6' && net.isIP(row.address) === 6 && row.address !== '::' && row.address !== '::1' && !row.address.toLowerCase().startsWith('fe80:'));
-  const candidates = [...new Set((ipv4.length ? ipv4 : ipv6).map(row => row.address))];
-  if (candidates.length !== 1) {
-    throw new Error('expected one concrete container address; set DSH_WEB_RELAY_INTERFACE to a single container network interface (host networking is not supported)');
-  }
-  return candidates[0];
-}
-
-// The container Web listener must be a fixed port so the published port and
-// the probes stay meaningful; --port 0 is rejected on purpose.
-function webPort(args) {
-  let port = '3080';
-  for (let i = 0; i < args.length; i++) {
-    if (args[i] === '--port') port = args[++i];
-    else if (args[i].startsWith('--port=')) port = args[i].slice(7);
-    else if (args[i] === '--') break;
-  }
-  if (!/^\d+$/.test(port ?? '') || Number(port) < 1 || Number(port) > 65535) {
-    throw new Error('container Web supervisor requires a fixed --port between 1 and 65535');
-  }
-  return Number(port);
-}
-
-// Raw TCP forwarder (the retired relay's behavior): one concrete container
-// address to DSH's loopback listener. Bytes are piped untouched, half-close
-// is preserved, and either side closing destroys the pair.
-function createForwarder({ host, port, targetHost = '127.0.0.1', targetPort }) {
-  const sockets = new Set();
-  const server = net.createServer({ allowHalfOpen: true }, client => {
-    const upstream = net.connect({ host: targetHost, port: targetPort, allowHalfOpen: true });
-    for (const socket of [client, upstream]) {
-      sockets.add(socket);
-      socket.once('close', () => sockets.delete(socket));
-    }
-    const destroyPair = () => { client.destroy(); upstream.destroy(); };
-    client.on('error', destroyPair);
-    upstream.on('error', destroyPair);
-    client.once('close', () => upstream.destroy());
-    upstream.once('close', () => client.destroy());
-    client.pipe(upstream);
-    upstream.pipe(client);
-  });
-  return {
-    server,
-    listen() {
-      return new Promise((resolve, reject) => {
-        server.once('error', reject);
-        server.listen({ host, port }, () => { server.off('error', reject); resolve(); });
-      });
-    },
-    close() {
-      for (const socket of sockets) socket.destroy();
-      return new Promise(resolve => server.close(resolve));
-    },
-  };
 }
 
 // Mirror one child stream into `sink` line by line: each completed line is
@@ -182,7 +117,6 @@ function createSupervisor(options = {}) {
   let stopping = false;
   let stopResolvers = [];
   let timer = null;
-  let forwarder = null;
 
   const readyListeners = new Set();
   const readyWaits = new Set();
@@ -221,13 +155,6 @@ function createSupervisor(options = {}) {
     }
   }
 
-  function closeForwarder() {
-    if (!forwarder) return;
-    const closing = forwarder;
-    forwarder = null;
-    closing.close().catch(() => {});
-  }
-
   function captureToken(token) {
     tokenBinding = { pid: child.pid, startedAt, token };
     if (state === 'ready') return; // a reprint keeps the same process token
@@ -247,7 +174,6 @@ function createSupervisor(options = {}) {
     live = false;
     clearTimer();
     const mapped = mapExitCode(code, signal);
-    closeForwarder();
     if (stopping) {
       stopping = false;
       const resolvers = stopResolvers;
@@ -308,17 +234,6 @@ function createSupervisor(options = {}) {
       fireStateChange();
     }, tokenTimeoutMs);
     fireStateChange();
-    if (options.forward) {
-      forwarder = createForwarder(options.forward);
-      try {
-        await forwarder.listen();
-      } catch (error) {
-        closeForwarder();
-        child.kill('SIGTERM');
-        note(`web forwarder failed: ${error.message}`);
-        throw error;
-      }
-    }
     return tokenBinding;
   }
 
@@ -363,44 +278,68 @@ function createSupervisor(options = {}) {
   return { start, stop, status, token, onReady, onStateChange };
 }
 
+// DSH_TRUSTED_HOSTS is the single translation point: the supervisor appends it
+// as repeated --trusted-host arguments for dsh, and the proxy reads the same
+// value for its Host gate. An explicit command-line --trusted-host is rejected
+// so the two consumers cannot diverge.
+function formatTrustedHost(entry) {
+  const host = entry.host.includes(':') ? '[' + entry.host + ']' : entry.host;
+  return entry.port ? host + ':' + entry.port : host;
+}
+
+function appendTrustedHosts(args, trustedHosts) {
+  const explicit = args.some(arg => arg === '--trusted-host' || arg.startsWith('--trusted-host='));
+  if (explicit) throw new Error('--trusted-host must come only from DSH_TRUSTED_HOSTS; remove it from the command line');
+  for (const entry of trustedHosts) args.push('--trusted-host', formatTrustedHost(entry));
+}
+
 async function main() {
   const dshArgs = process.argv.slice(2);
   const targetPort = webPort(dshArgs);
-  const listenHost = process.env.DSH_WEB_SUPERVISOR_LISTEN_ADDRESS
+  const trustedHosts = parseTrustedHosts(process.env.DSH_TRUSTED_HOSTS);
+  appendTrustedHosts(dshArgs, trustedHosts);
+  const listenHost = process.env.DSH_WEB_LISTEN_ADDRESS
+    ?? process.env.DSH_WEB_SUPERVISOR_LISTEN_ADDRESS
     ?? selectAddress(os.networkInterfaces(), process.env.DSH_WEB_RELAY_INTERFACE);
-  const forward = process.env.DSH_WEB_SUPERVISOR_NO_LISTENER === '1' ? null : {
-    host: listenHost,
-    port: targetPort,
-    targetHost: '127.0.0.1',
-    targetPort,
-  };
   const supervisor = createSupervisor({
     command: process.env.DSH_WEB_SUPERVISOR_CHILD ?? DEFAULT_COMMAND,
     args: dshArgs,
-    forward,
   });
   try {
     await supervisor.start();
   } catch (error) {
-    console.error(`dsh web supervisor: ${error.message}`);
+    console.error('dsh web supervisor: ' + error.message);
     process.exit(1);
   }
-  if (forward) {
-    console.log(`dsh web supervisor: ${listenHost}:${targetPort} -> 127.0.0.1:${targetPort} (pid ${supervisor.status().pid})`);
+
+  let proxy = null;
+  if (process.env.DSH_WEB_SUPERVISOR_NO_LISTENER !== '1') {
+    proxy = createProxy({ listenHost, webPort: targetPort, supervisor, trustedHosts });
+    try {
+      await proxy.listen();
+    } catch (error) {
+      await supervisor.stop('SIGTERM').catch(() => {});
+      console.error('dsh web proxy: ' + error.message);
+      process.exit(1);
+    }
+    console.log('dsh web proxy: ' + listenHost + ':' + targetPort + ' -> 127.0.0.1:' + targetPort + ' (pid ' + supervisor.status().pid + ')');
   }
 
   let shuttingDown = false;
-  supervisor.onStateChange(current => {
+  const shutdown = async code => {
     if (shuttingDown) return;
-    if (current.state === 'exited') {
-      shuttingDown = true;
-      process.exit(current.exitCode ?? 127);
-    }
+    shuttingDown = true;
+    if (proxy) await proxy.close().catch(() => {});
+    process.exit(code);
+  };
+  supervisor.onStateChange(current => {
+    if (current.state === 'exited') shutdown(current.exitCode ?? 127);
   });
   for (const signal of ['SIGTERM', 'SIGINT', 'SIGHUP']) {
     process.once(signal, async () => {
       if (shuttingDown) return;
       shuttingDown = true;
+      if (proxy) await proxy.close().catch(() => {});
       const code = await supervisor.stop(signal);
       process.exit(code);
     });
@@ -409,12 +348,9 @@ async function main() {
 
 module.exports = {
   DEFAULT_TOKEN_TIMEOUT_MS,
-  createForwarder,
   createSupervisor,
   extractLaunchToken,
   mapExitCode,
-  selectAddress,
-  webPort,
 };
 
 if (require.main === module) {

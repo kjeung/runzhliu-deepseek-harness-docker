@@ -5,7 +5,7 @@ Thanks for improving this community container project.
 Before opening a pull request:
 
 1. Keep `@deepseek-ai/dsh` pinned through `DSH_VERSION`, and assign every container change a separate immutable `IMAGE_VERSION`; never reuse a published tag or switch to an unbounded `latest` install.
-2. Preserve the local-only Web security posture. Do not add a public Ingress, LoadBalancer, unrestricted host port, Docker socket mount, `privileged`, or extra Linux capabilities.
+2. Preserve the local-only Web security posture. Do not add an in-container auth/TLS gateway or a public Ingress/LoadBalancer; an external reverse proxy owns transport security and SSO. The proxy defines the `401`/`303` semantics, so update both READMEs, smoke, and the proxy tests together when they change. Do not add an unrestricted host port, Docker socket mount, `privileged`, or extra Linux capabilities.
 3. Run `make verify`, `make build`, and `make smoke`; changes to the privacy variant must also pass `make ungoogled-build` and `make ungoogled-smoke`. `make verify` includes the cross-file version consistency check.
 4. Test native dependencies on both `linux/amd64` and `linux/arm64` when changing Node, Debian, npm, or DSH versions.
 5. Update both `README.md` and `README.en.md` when behavior or commands change.

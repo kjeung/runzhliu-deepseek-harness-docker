@@ -12,7 +12,6 @@ ungoogled_image_version="${8:?missing ungoogled image version}"
 ungoogled_amd64_sha256="${9:?missing ungoogled-chromium amd64 sha256}"
 ungoogled_arm64_sha256="${10:?missing ungoogled-chromium arm64 sha256}"
 bwrap_image_version="${11:?missing bubblewrap image version}"
-caddy_version="${12:?missing Caddy version}"
 
 require_literal() {
   local file="$1"
@@ -30,6 +29,7 @@ require_literal Dockerfile '"@deepseek-ai/dsh-browser-use@${DSH_VERSION}"'
 require_literal Dockerfile '"@deepseek-ai/dsh-experimental-browser-use-playwright-mcp@${DSH_VERSION}"'
 require_literal Dockerfile 'COPY scripts/dsh-container /usr/local/bin/dsh'
 require_literal Dockerfile 'COPY scripts/dsh-web-supervisor.cjs /opt/deepseek-harness/dsh-web-supervisor.cjs'
+require_literal Dockerfile 'COPY scripts/dsh-web-proxy.cjs /opt/deepseek-harness/dsh-web-proxy.cjs'
 require_literal web.cordis.patch.yml "host: '127.0.0.1'"
 require_literal web.market.cordis.patch.yml "host: '127.0.0.1'"
 require_literal Dockerfile "ARG NODE_IMAGE=docker.io/library/node:24-trixie"
@@ -51,7 +51,6 @@ require_literal compose.market.yaml "MARKET_IMAGE_VERSION:-${market_image_versio
 require_literal compose.bwrap.yaml "BWRAP_IMAGE_VERSION:-${bwrap_image_version}"
 require_literal compose.bwrap.yaml 'seccomp=unconfined'
 require_literal compose.bwrap.yaml 'systempaths=unconfined'
-require_literal compose.lan.yaml "docker.io/library/caddy:${caddy_version}-alpine"
 require_literal compose.podman.yaml 'userns_mode: "keep-id:uid=1000,gid=1000"'
 require_literal compose.podman.yaml 'in_pod: false'
 require_literal compose.podman.yaml '${DSH_WORKSPACE:-dsh-workspace}:/workspace:Z'
@@ -60,8 +59,6 @@ require_literal .env.example "DSH_IMAGE_VERSION=${image_version}"
 require_literal .env.example "PNPM_VERSION=${pnpm_version}"
 require_literal .env.example 'DSH_IMAGE_REPOSITORY=docker.io/runzhliu/deepseek-harness'
 require_literal .env.example 'NODE_IMAGE=docker.io/library/node:24-trixie'
-require_literal .env.lan.example "CADDY_IMAGE=docker.io/library/caddy:${caddy_version}-alpine"
-require_literal .env.lan.example "DSH_IMAGE_VERSION=${image_version}"
 require_literal charts/deepseek-harness/Chart.yaml "appVersion: \"${dsh_version}\""
 require_literal charts/deepseek-harness/Chart.yaml "image: docker.io/runzhliu/deepseek-harness:${image_version}"
 require_literal charts/deepseek-harness/values.yaml 'repository: docker.io/runzhliu/deepseek-harness'
@@ -109,7 +106,6 @@ require_literal README.md "runzhliu/deepseek-harness:${ungoogled_image_version}"
 require_literal README.md "runzhliu/deepseek-harness:${bwrap_image_version}"
 require_literal README.md "ungoogled-chromium@${ungoogled_chromium_version}"
 require_literal README.md "runzhliu-dsh-browser-desktop-${browser_plugin_version}.tgz"
-require_literal README.md "caddy:${caddy_version}-alpine"
 require_literal README.en.md "runzhliu/deepseek-harness:${image_version}"
 require_literal README.en.md "--build-arg DSH_VERSION=${dsh_version}"
 require_literal README.en.md "DSH_VERSION=${dsh_version} DSH_IMAGE_VERSION=${image_version}"
@@ -118,11 +114,9 @@ require_literal README.en.md "runzhliu/deepseek-harness:${ungoogled_image_versio
 require_literal README.en.md "runzhliu/deepseek-harness:${bwrap_image_version}"
 require_literal README.en.md "ungoogled-chromium@${ungoogled_chromium_version}"
 require_literal README.en.md "runzhliu-dsh-browser-desktop-${browser_plugin_version}.tgz"
-require_literal README.en.md "caddy:${caddy_version}-alpine"
 require_literal SKILL.md "runzhliu/deepseek-harness:${image_version}"
 require_literal SKILL.md "${ungoogled_image_version}"
 require_literal SKILL.md "${bwrap_image_version}"
-require_literal SKILL.md "caddy:${caddy_version}-alpine"
 require_literal README.md 'compose.podman.yaml'
 require_literal README.en.md 'compose.podman.yaml'
 require_literal SKILL.md 'compose.podman.yaml'
@@ -130,5 +124,5 @@ require_literal README.md 'compose.bwrap.yaml'
 require_literal README.en.md 'compose.bwrap.yaml'
 require_literal SKILL.md 'compose.bwrap.yaml'
 
-printf 'versions are consistent: image=%s dsh=%s pnpm=%s market=%s browser-plugin=%s ungoogled-chromium=%s bwrap=%s caddy=%s\n' \
-  "${image_version}" "${dsh_version}" "${pnpm_version}" "${market_version}" "${browser_plugin_version}" "${ungoogled_chromium_version}" "${bwrap_image_version}" "${caddy_version}"
+printf 'versions are consistent: image=%s dsh=%s pnpm=%s market=%s browser-plugin=%s ungoogled-chromium=%s bwrap=%s\n' \
+  "${image_version}" "${dsh_version}" "${pnpm_version}" "${market_version}" "${browser_plugin_version}" "${ungoogled_chromium_version}" "${bwrap_image_version}"

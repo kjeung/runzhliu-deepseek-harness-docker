@@ -6,6 +6,7 @@ expected_dsh_version="${2:-0.2.1-rc.2}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "${script_dir}/.." && pwd)"
 temporary_dir="$(mktemp -d "${TMPDIR:-/tmp}/dsh-podman-smoke.XXXXXX")"
+cookie_jar="${temporary_dir}/cookies"
 workspace_dir="${temporary_dir}/workspace"
 project="dsh-podman-smoke-${RANDOM}-$$"
 
@@ -45,6 +46,7 @@ compose=(
 
 cleanup() {
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  rm -f -- "${cookie_jar}"
   rm -rf -- "${temporary_dir}"
 }
 trap cleanup EXIT INT TERM
@@ -112,8 +114,19 @@ if [[ "$(stat -c '%u' "${workspace_dir}/.podman-write-test")" != "$(id -u)" ]]; 
   exit 1
 fi
 
-if [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${DSH_PORT}/")" != 401 ]]; then
-  echo "rootless Web endpoint did not preserve DSH authentication" >&2
+fresh_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --cookie-jar "${cookie_jar}" "http://127.0.0.1:${DSH_PORT}/" || true)"
+if [[ "${fresh_status}" != "303" ]] || [[ ! -s "${cookie_jar}" ]]; then
+  echo "rootless Web endpoint did not auto-exchange the launch token (status ${fresh_status})" >&2
+  exit 1
+fi
+if [[ "$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  --cookie "${cookie_jar}" "http://127.0.0.1:${DSH_PORT}/")" != "200" ]]; then
+  echo "rootless Web endpoint did not accept the auto-login cookie" >&2
+  exit 1
+fi
+if [[ "$(podman exec "${container}" node -e 'fetch("http://127.0.0.1:3080/").then(r => process.stdout.write(String(r.status)))' 2>/dev/null)" != "401" ]]; then
+  echo "rootless container loopback did not preserve DSH authentication" >&2
   exit 1
 fi
 curl --fail --silent --output /dev/null "http://127.0.0.1:${DSH_DESKTOP_PORT}/vnc.html"

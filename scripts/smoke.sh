@@ -216,17 +216,21 @@ market_is_ready() {
 }
 
 for attempt in $(seq 1 30); do
-  unauthenticated_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+  fresh_status="$(curl --silent --output /dev/null --write-out '%{http_code}' \
+    --cookie-jar "${cookie_jar}" \
     "http://127.0.0.1:${port}/" || true)"
   launch_token="$(docker logs "${container}" 2>&1 \
     | sed -n 's#^dsh web: http://127\.0\.0\.1:[0-9][0-9]*/?token=\([^ ]*\).*#\1#p' \
     | tail -n 1)"
-  if [[ "${unauthenticated_status}" == "401" ]] \
+  if [[ "${fresh_status}" == "303" ]] \
+      && [[ -s "${cookie_jar}" ]] \
       && [[ -n "${launch_token}" ]] \
-      && curl --fail --silent --location \
-        --cookie-jar "${cookie_jar}" \
-        --cookie "${cookie_jar}" \
-        "http://127.0.0.1:${port}/?token=${launch_token}" >/dev/null \
+      && curl --fail --silent --cookie "${cookie_jar}" \
+        "http://127.0.0.1:${port}/" >/dev/null \
+      && docker exec "${container}" node -e \
+        "fetch('http://127.0.0.1:3080/').then(response => { if (response.status !== 401) process.exit(1) }).catch(() => process.exit(1))" \
+      && docker exec "${container}" node -e \
+        "fetch('http://127.0.0.1:3080/api', { headers: { origin: 'https://untrusted.example' } }).then(response => { if (response.status !== 403) process.exit(1) }).catch(() => process.exit(1))" \
       && docker exec "${container}" node -e \
         "Promise.all([fetch('http://127.0.0.1:6080/vnc.html'), fetch('http://127.0.0.1:9222/json/version'), fetch('http://127.0.0.1:3080/browser-desktop/state')]).then(rs => { if (rs.some(r => !r.ok)) process.exit(1) }).catch(() => process.exit(1))" \
       && market_is_ready; then
@@ -240,7 +244,7 @@ for attempt in $(seq 1 30); do
       const rows = ["/proc/net/tcp", "/proc/net/tcp6"].flatMap(file => fs.readFileSync(file, "utf8").trim().split("\n").slice(1))
       const listeners = rows.map(row => row.trim().split(/\s+/)).filter(row => row[3] === "0A" && row[1].endsWith(":0C08")).map(row => row[1].split(":")[0])
       if (listeners.some(address => /^0+$/.test(address))) throw new Error("wildcard Web listener")
-      if (!listeners.includes("0100007F") || listeners.length !== 2) throw new Error("expected DSH loopback plus exactly one concrete supervisor forwarder listener")
+      if (!listeners.includes("0100007F") || listeners.length !== 2) throw new Error("expected DSH loopback plus exactly one concrete proxy listener")
     '; then
       echo "Web listener boundary check failed" >&2
       exit 1
@@ -363,6 +367,30 @@ for attempt in $(seq 1 30); do
         echo "ungoogled-chromium unexpectedly emitted Google Cloud Messaging logs" >&2
         exit 1
       fi
+    fi
+    # Salvaged from the retired lan-smoke: noVNC and websockify are tested
+    # directly on their loopback port, without the removed same-origin gateway.
+    if ! docker exec "${container}" node -e '
+      const net = require("node:net")
+      const socket = net.connect(6080, "127.0.0.1", () => {
+        socket.write("GET / HTTP/1.1\r\nHost: 127.0.0.1:6080\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n")
+      })
+      let buffer = ""
+      socket.on("data", chunk => { buffer += chunk; if (buffer.includes("101")) { socket.destroy(); process.exit(0) } })
+      socket.on("error", () => process.exit(1))
+      setTimeout(() => process.exit(1), 3000)
+    '; then
+      echo "noVNC websockify did not answer the WebSocket upgrade with 101" >&2
+      exit 1
+    fi
+    # The manual ?token= URL remains the fallback after the automatic exchange.
+    rm -f "${cookie_jar}"
+    if ! curl --fail --silent --location \
+      --cookie-jar "${cookie_jar}" \
+      "http://127.0.0.1:${port}/?token=${launch_token}" \
+      | grep --quiet '"id":"@runzhliu/dsh-browser-desktop"'; then
+      echo "manual ?token= fallback did not load the Harness manifest" >&2
+      exit 1
     fi
     if docker logs "${container}" 2>&1 | grep --quiet 'opening the default browser'; then
       echo "dsh web attempted to open a host browser; the container command must include --no-open" >&2

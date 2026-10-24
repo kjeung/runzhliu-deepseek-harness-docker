@@ -12,7 +12,7 @@ English | [简体中文](README.md)
 
 **One of the earliest unofficial Docker image projects for DeepSeek Harness, maintained since [August 13, 2026](https://github.com/runzhliu/deepseek-harness-docker/commit/0d12e3bdb6dc5c0f408870b73b1914359a4f9aca).** It provides AMD64/ARM64 images on Docker Hub and GHCR, Docker Compose, rootless Podman, and Helm deployments, with ongoing upstream release tracking.
 
-The default image runs the official `@deepseek-ai/dsh` Web UI in a non-root Node.js 24 runtime, with a visible Chromium/noVNC desktop, an optional community plugin market, and a protected LAN gateway. It packages official npm artifacts without modifying DeepSeek Harness source.
+The default image runs the official `@deepseek-ai/dsh` Web UI in a non-root Node.js 24 runtime, with a visible Chromium/noVNC desktop, an optional community plugin market, and an external reverse-proxy entry contract. It packages official npm artifacts without modifying DeepSeek Harness source.
 
 > Current baseline: `@deepseek-ai/dsh@0.2.1-rc.2`. DeepSeek Harness is still a pre-release. Re-run the build and smoke tests before every version upgrade.
 
@@ -30,7 +30,7 @@ The default image runs the official `@deepseek-ai/dsh` Web UI in a non-root Node
 
 > **0.2.1 compatibility warning:** Automation tasks return to the built-in Web bundle; retired experimental-bundle selections are cleaned up while existing tasks remain. Runtime invariant plugins and package `./invariant` exports were removed, subpath plugins no longer read a separate `package.json`, and the former composer `stats` entry was split into `activity` and `usage`. Custom plugins using these extension points must be updated first.
 
-> **alpha.2 migration warning:** Tool presentation removes `both`, retaining only `native` and `ptc`; custom Python PTC compositions require `sandbox` and `sandboxPolicy`. `agent-instructions` no longer accepts per-row `dshHome`; use process-level `DSH_HOME`. Custom subagent SDK runtimes must support `session/wait`, and Agent Team outbox, retry, and deduplication settings require migration. This image retains loopback ports and the existing Caddy LAN gateway; upstream native HTTPS support does not automatically expose the deployment. See the [upstream release notes](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-alpha.2).
+> **alpha.2 migration warning:** Tool presentation removes `both`, retaining only `native` and `ptc`; custom Python PTC compositions require `sandbox` and `sandboxPolicy`. `agent-instructions` no longer accepts per-row `dshHome`; use process-level `DSH_HOME`. Custom subagent SDK runtimes must support `session/wait`, and Agent Team outbox, retry, and deduplication settings require migration. This image keeps loopback publication and lets the in-container proxy complete the launch-token exchange; external TLS/SSO belongs to the operator's reverse proxy and upstream native HTTPS never exposes the deployment automatically. See the [upstream release notes](https://github.com/deepseek-ai/deepseek-harness/releases/tag/dsh-v0.2.1-alpha.2).
 
 > Upstream tracking: the daily [Upstream DSH version watch](.github/workflows/upstream-dsh.yml) checks both GitHub Releases and npm. When a new Release exists but its npm artifact is unavailable, the workflow creates or refreshes a waiting issue while retaining the current installable baseline. Once the matching package becomes installable, the issue automatically becomes an upgrade alert and closes after the pin catches up.
 
@@ -47,10 +47,10 @@ _Light-theme capture (2026-10-17, DSH `0.2.1-rc.2`) from an isolated, empty demo
 | Capability | Status | Evidence |
 | --- | --- | --- |
 | Dockerfile | Ready | `linux/arm64` and `linux/amd64` builds and real native PTY spawning tested |
-| Docker Compose | Ready | Web token/cookie authentication, healthy state, loopback publication, and persistence across restart tested |
+| Docker Compose | Ready | Web token/cookie authentication with automatic login (303 + Set-Cookie), healthy state, loopback publication, and persistence across restart tested |
 | Rootless Podman | Ready | CI covers `keep-id`, bind-mount writes, named-volume persistence, and loopback publication |
 | Helm | Ready | StatefulSet, PVC, headless Service, and NetworkPolicy; `helm lint --strict` passes |
-| Web UI | Local by default; protected LAN opt-in | Loopback by default; LAN overlay adds HTTPS, Basic Auth, DSH token/cookie, and same-origin noVNC |
+| Web UI | Local by default; external reverse proxy | Loopback by default; the in-container proxy logs in automatically and enforces the Host gate; TLS/SSO belongs to the external reverse proxy |
 | Headless | Ready | Inject provider secrets at runtime; validate model calls and sandboxing in the target environment |
 | Chromium | Default plus privacy variant | Debian Chromium by default; a separate native multi-platform ungoogled-chromium image checks for no GCM `:5228` activity |
 
@@ -99,8 +99,8 @@ User code lives separately at `/workspace`. Compose combines a named `dsh-home` 
 | --- | --- | --- |
 | Node / glibc | Requires Node 22.19+ or 24+; some user binaries require a newer glibc | Pin the official non-slim `node:24-trixie`, Debian 13 with glibc 2.41 |
 | Native dependencies and Agent tools | `node-pty` or third-party plugins may need native builds; the Agent needs common development commands | Install DSH in a separate stage; intentionally retain the buildpack-deps toolchain at runtime and add `jq`, `less`, `ripgrep`, `rsync`, `zip`, and related tools |
-| Web bind | Both CLI and configuration reject wildcard addresses from `0.2.1-alpha.2` | Keep DSH on loopback; the supervisor forwards one concrete container IP; host ports 3080/6080 remain on `127.0.0.1` |
-| Web security | Launch-token authentication, Host/Origin checks, and optional native TLS; noVNC is unauthenticated and tools can execute code | HTTP with loopback publication by default; optional Caddy HTTPS + Basic Auth; no public Ingress/LoadBalancer |
+| Web bind | Both CLI and configuration reject wildcard addresses from `0.2.1-alpha.2` | Keep DSH on loopback; the proxy forwards HTTP/WS and performs the token exchange on one concrete container IP; host ports 3080/6080 remain on `127.0.0.1` |
+| Web security | Launch-token authentication, Host/Origin checks, and optional native TLS; noVNC is unauthenticated and tools can execute code | HTTP with loopback publication by default; the proxy logs in automatically and enforces the Host gate; TLS/SSO belongs to the external reverse proxy; no public Ingress/LoadBalancer |
 | HMR | A config watcher needs Node internals after boot | Pass `--expose-internals` only to the DSH process, never through inherited `NODE_OPTIONS` |
 | Directory browser | Starts at `os.homedir()` | Point `HOME` at writable `/workspace` instead of read-only `/home/node` |
 | Child processes | Agents can create shell and PTY subprocesses | Use `tini` for signal forwarding and orphan reaping |
@@ -108,9 +108,9 @@ User code lives separately at `/workspace`. Compose combines a named `dsh-home` 
 
 Choosing the non-slim base is an explicit coding-agent trade-off rather than a smallest-image goal. Debian 13 Trixie raises glibc from Bookworm's 2.36 to 2.41, allowing more binaries built on recent systems to run. The official non-slim Node variant is based on `buildpack-deps` and already includes the compiler, `make`, `git`, `curl`, `file`, `unzip`, `wget`, and `xz`; this project explicitly adds `jq`, `less`, `ripgrep`, `rsync`, and `zip`. The trade-off is roughly 330 MB more compressed base-image data than slim. The smoke test asserts Trixie, glibc 2.41, and the complete command contract so a later upgrade cannot silently regress them.
 
-From `0.2.1-alpha.2`, both the Harness CLI and configuration reject wildcard listeners. This image keeps DSH on `127.0.0.1:3080`, and a supervisor spawned by the entrypoint listens on **one concrete container IP** and forwards bytes to it; the same supervisor owns the `dsh` child, mirrors its stdout/stderr into the container log line by line, and holds the current launch token in memory (never on disk) for a later proxy exchange. It does not modify DSH source or rewrite tokens, cookies, Host/Origin headers, or WebSocket traffic. This supports Docker/Podman port publication while preserving Kubernetes port-forward and in-container health checks. The supervisor selects a unique non-loopback IPv4 address, or a unique non-link-local IPv6 address on IPv6-only networks. Ambiguous multi-interface setups fail closed and require an explicit `DSH_WEB_RELAY_INTERFACE`. Host networking and `--port 0` are unsupported.
+From `0.2.1-alpha.2`, both the Harness CLI and configuration reject wildcard listeners. This image keeps DSH on `127.0.0.1:3080` and loads a same-process proxy in the supervisor that listens on **one concrete container IP**. The proxy forwards HTTP/1.1 and WebSocket traffic semantically transparently, with exactly four deviations: the Host gate, returning the exchange `303` + `Set-Cookie` to the browser verbatim, injecting a cached valid session when the token is unavailable, and replacing responses for the documented failure surfaces. The supervisor still owns the `dsh` child, mirrors its log line by line, and holds the launch token in memory (never on disk). It does not modify DSH source or rewrite tokens, cookies, Host/Origin headers, or WebSocket traffic. The listener selects a unique non-loopback IPv4 address, or a unique non-link-local IPv6 address on IPv6-only networks. Ambiguous multi-interface setups fail closed and require an explicit `DSH_WEB_RELAY_INTERFACE`. Host networking and `--port 0` are unsupported.
 
-Default Compose still publishes only on host `127.0.0.1`. The opt-in `compose.lan.yaml` gateway terminates HTTPS on one selected LAN address, adds Basic Auth, and carries noVNC through the same authenticated origin while DSH continues to enforce its launch token, signed cookie, and Host/Origin checks. Changing the native ports to `-p 3080:3080`, NodePort, LoadBalancer, or a public Ingress still breaks the security model.
+Default Compose still publishes only on host `127.0.0.1`. For access from other hosts, place a reverse proxy/SSO outside the container; `DSH_TRUSTED_HOSTS` is the single allow-list source (space/comma separated, optional port) shared by the proxy and DSH. Changing the native ports to `-p 3080:3080`, NodePort, LoadBalancer, or a public Ingress still breaks the security model.
 
 ### Container isolation versus the Harness sandbox
 
@@ -159,7 +159,7 @@ This image handles the container boundaries that a one-line image misses:
 - compiles native modules in a disposable builder stage;
 - uses a container-only Cordis bind overlay while keeping host publication on loopback.
 
-DeepSeek Harness Web exchanges a launch token for a signed browser cookie and checks Host/Origin, but this image uses HTTP by default, its API can initiate code execution, and its noVNC port is unauthenticated. The default is therefore a **trusted, local, single-user development environment**. LAN access must use the explicit protected gateway below; public exposure is unsupported.
+DeepSeek Harness Web exchanges a launch token for a signed browser cookie and checks Host/Origin, but this image uses HTTP by default, its API can initiate code execution, and its noVNC port is unauthenticated. The default is therefore a **trusted, local, single-user development environment**. Trusted authorities are declared through `DSH_TRUSTED_HOSTS`, and TLS/SSO belongs to the external reverse proxy; public exposure is unsupported.
 
 ## Quick start with Docker Compose
 
@@ -172,7 +172,7 @@ docker compose ps
 docker compose logs --no-color deepseek-harness | grep 'dsh web:'
 ```
 
-Open the complete <http://127.0.0.1:3080> URL carrying `?token=...` after `dsh web:` in the logs. Harness exchanges that process-scoped launch token for a signed cookie and redirects to the clean root path; opening the root without a token returns `401`. Configure a model and credentials in Settings. The **Browser desktop** action in the sidebar opens an interactive container Chromium directly inside the Harness Web UI. The named `dsh-home` volume preserves both Harness state and the browser profile across container recreation.
+Open <http://127.0.0.1:3080> directly: the in-container proxy completes the launch-token exchange (303 + `Set-Cookie`), so there is no token hunt. The manual `?token=` URL remains the fallback; in-container loopback requests (for example health checks) still return `401`. Configure a model and credentials in Settings. The **Browser desktop** action in the sidebar opens an interactive container Chromium directly inside the Harness Web UI. The named `dsh-home` volume preserves both Harness state and the browser profile across container recreation.
 
 When `DSH_WORKSPACE` is unset, Compose uses a separate `dsh-workspace` named volume so the Agent cannot accidentally modify this repository. Set `DSH_WORKSPACE=/absolute/path/to/project` only after choosing the intended host project.
 
@@ -213,34 +213,33 @@ DSH_IMAGE_REPOSITORY=ghcr.io/runzhliu/deepseek-harness \
   DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d --no-build
 ```
 
-### Optional HTTPS access from a trusted LAN
+### External entry contract
 
-Never publish ports `3080` or `6080` directly to a LAN. [`compose.lan.yaml`](compose.lan.yaml) is an explicit security overlay: it exposes one HTTPS endpoint on one selected server LAN address, places Caddy Basic Auth in front, preserves DSH's own launch-token, signed-cookie, and Host/Origin checks, and proxies embedded noVNC through the same HTTPS origin and authentication chain. Default `compose.yaml` behavior remains unchanged.
+This image ships no Caddy or any in-container authentication/TLS gateway; `3080`/`6080` are published to host `127.0.0.1` only. For access from other hosts, place a reverse proxy/SSO outside the container and follow this contract:
 
-Create the private environment file and a password hash:
+- Terminate TLS at the external reverse proxy; forward the browser `Host` verbatim (do not rewrite it to the container address), and put the authorities you want to allow into `DSH_TRUSTED_HOSTS` (space/comma separated, optional port). The proxy and DSH share that one list; an explicit command-line `--trusted-host` fails startup.
+- Do not buffer responses or compress SSE; pass WebSocket upgrades and half-closes through.
+- An HTTPS site should accept `https://` only and mark cookies `Secure`; the proxy never rewrites cookies.
+- Keep one origin for everything (including `/api` and noVNC paths); run one replica, without sticky routing or shared install volumes.
+- In-container loopback probes still return `401`; `localhost` is intentionally not loopback, so use `127.0.0.1` or declare the authority explicitly.
 
-```bash
-cp .env.lan.example .env.lan
-docker run --rm -it caddy:2.11.4-alpine caddy hash-password
+The following Caddy snippet is a **non-normative example** of the contract, not a supported configuration:
+
+```caddy
+example.internal {
+  reverse_proxy 127.0.0.1:3080 {
+    flush_interval -1
+  }
+}
 ```
 
-Edit `.env.lan`. Set `DSH_LAN_BIND_ADDRESS` to the server's **exact LAN IP**, set `DSH_LAN_HOST` to a client-resolvable internal DNS name (preferred) or that IP, paste the bcrypt hash between the single quotes, and set `DSH_WORKSPACE` when required. Do not use `0.0.0.0`. Start the stack with:
+Allow the matching authority:
 
 ```bash
-make lan-up
-make lan-logs
+DSH_TRUSTED_HOSTS="example.internal:443" docker compose up -d
 ```
 
-Caddy uses its internal CA by default. Copy the root and install it in each trusted client's system trust store; do not bypass browser certificate verification:
-
-```bash
-docker compose --env-file .env.lan -f compose.yaml -f compose.lan.yaml \
-  cp lan-gateway:/data/caddy/pki/authorities/local/root.crt ./dsh-lan-root.crt
-```
-
-Find the local startup URL after `dsh web:` in `make lan-logs`, take only its `?token=...` query, and first open `https://DSH_LAN_HOST:8443/?token=...` (use the configured port). The browser authenticates to Caddy first, then DSH exchanges the launch token for a session cookie marked `Secure`. Later visits use the clean HTTPS URL. `make lan-down` stops this mode without deleting data volumes. Port 8443 works for ordinary rootless Docker/Podman users; choose 443 only when the host may bind privileged ports.
-
-This mode is for a small number of users in the **same trust domain**, not DSH multi-tenancy. Every authenticated user shares the sessions, settings, credentials, and Agent code-execution authority. Deploy separate instances and volumes for mutually untrusted users. Restrict source networks with the host firewall and never forward this endpoint to the public Internet. Run `make lan-smoke` to verify TLS, both authentication layers, Origin rejection, same-origin noVNC, and loopback-only native ports.
+This mode is not multi-tenant: every authenticated user shares sessions, credentials, and Agent authority. Deploy separate instances and volumes for mutually untrusted users.
 
 ### Browser desktop, official Browser Use, and human takeover
 
@@ -262,7 +261,7 @@ The public plugin uses Harness's `sidebar.footer.action` and `shell.overlay` ext
 
 _Light-theme capture (2026-10-17, DSH `0.2.1-rc.2`, browser-desktop plugin `0.1.5`): the browser panel is inside Harness and displays the official RC2 GitHub Release page._
 
-This follows the visible-desktop idea from [`docker-antigravity`](https://github.com/runzhliu/docker-antigravity) without adopting its amd64 base or Selkies. Debian's native packages keep the image usable on both Apple Silicon and x86 Linux. The official [Browser Use architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/browser-use.md) and [Sidebar Browser limitations](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-sidebar-browser/README.md) describe the boundary between these layers. Port 6080 is loopback-only like 3080; the native noVNC endpoint has no authentication and must never be exposed directly. The optional LAN overlay carries the versioned `/novnc-*` route through the same HTTPS and authentication boundary as the Web UI.
+This follows the visible-desktop idea from [`docker-antigravity`](https://github.com/runzhliu/docker-antigravity) without adopting its amd64 base or Selkies. Debian's native packages keep the image usable on both Apple Silicon and x86 Linux. The official [Browser Use architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/subsystems/browser-use.md) and [Sidebar Browser limitations](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/client/ui-sidebar-browser/README.md) describe the boundary between these layers. Port 6080 is loopback-only like 3080; the native noVNC endpoint has no authentication and must never be exposed directly. noVNC remains published on host loopback only; external access is the reverse proxy's responsibility, including authentication.
 
 ```bash
 docker compose exec deepseek-harness chromium-docker --version
@@ -375,7 +374,7 @@ docker run --rm \
   runzhliu/deepseek-harness:0.2.1-rc.2-r1
 ```
 
-The foreground command prints the tokenized startup URL; open that exact URL. Do not shorten the publication to `-p 3080:3080`, and do not place this service behind a public Ingress: this configuration does not enable Web TLS, and noVNC on 6080 has no authentication.
+Open <http://127.0.0.1:3080> after startup; the proxy logs in automatically and the manual `?token=` URL stays available. Do not shorten the publication to `-p 3080:3080`, and do not place this service behind a public Ingress: this configuration does not enable Web TLS, and noVNC on 6080 has no authentication.
 
 ## Headless mode
 
@@ -415,7 +414,7 @@ kubectl -n deepseek-harness rollout status statefulset/deepseek-harness
 kubectl -n deepseek-harness port-forward service/deepseek-harness 3080:3080 6080:6080
 ```
 
-In another terminal, run `kubectl -n deepseek-harness logs statefulset/deepseek-harness | grep 'dsh web:'`, then open the complete tokenized <http://127.0.0.1:3080> URL from the log line. The same command forwards the embedded desktop to <http://127.0.0.1:6080>. Do not convert the non-TLS Web surface or unauthenticated noVNC endpoint into a NodePort, LoadBalancer, or direct Ingress.
+In another terminal, run `kubectl -n deepseek-harness port-forward service/deepseek-harness 3080:3080 6080:6080`, then open <http://127.0.0.1:3080>; the proxy logs in automatically and the manual `?token=` URL remains the fallback. The same command forwards the embedded desktop to <http://127.0.0.1:6080>. Do not convert the non-TLS Web surface or unauthenticated noVNC endpoint into a NodePort, LoadBalancer, or direct Ingress.
 
 Create a provider Secret without putting its value in `values.yaml`:
 
@@ -460,10 +459,10 @@ Do not install an unbounded `latest` tag. Release-candidate behavior changes qui
 
 - The image runs as `node` (UID/GID 1000). Fix bind-mount ownership or build a derived image with a matching UID when the host workspace is not writable.
 - The Web directory browser's Home is `/workspace`; it is intentionally separate from internal state under `/home/node/.dsh`.
-- The DSH service drops every Linux capability. The LAN gateway retains only `NET_BIND_SERVICE` because the official Caddy binary carries that file capability. Both use `no-new-privileges`, a read-only root filesystem, and a dedicated `/tmp` tmpfs.
+- The DSH service and the in-container proxy drop every Linux capability and use `no-new-privileges`, a read-only root filesystem, and a dedicated `/tmp` tmpfs.
 - Mount only the workspace the Agent needs. Never mount the host root, `~/.ssh`, cloud credential directories, or the Docker socket.
 - A container is not a multi-tenant sandbox. Do not share this instance with untrusted users or install unreviewed plugins into the persistent profile.
-- The LAN overlay adds transport encryption and an outer authentication gate for a trusted network; it does not add per-user authorization or session isolation. Bind one exact LAN IP, restrict firewall sources, and deploy separate instances for users who do not trust each other.
+- An external reverse proxy adds transport encryption and an outer authentication gate for a trusted network; it does not add per-user authorization or session isolation. Restrict source networks and deploy separate instances for users who do not trust each other.
 - Keep Harness's default permission mode and validate real tool execution. Do not use privilege flags to mask an unsupported sandbox environment.
 
 See [SECURITY.md](SECURITY.md) before changing any network or privilege setting.
@@ -479,9 +478,9 @@ docker run --rm --entrypoint dsh runzhliu/deepseek-harness:0.2.1-rc.2-r1 \
   web --patch /opt/deepseek-harness/web.cordis.patch.yml --dump-config
 
 docker compose up -d
-test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3080/)" = 401
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' -c /tmp/dsh-cookies http://127.0.0.1:3080/)" = 303
+test "$(curl --silent --output /dev/null --write-out '%{http_code}' -b /tmp/dsh-cookies http://127.0.0.1:3080/)" = 200
 make smoke
-make lan-smoke
 docker compose ps
 docker compose logs --no-color deepseek-harness
 
@@ -489,7 +488,7 @@ helm lint --strict charts/deepseek-harness
 helm template deepseek-harness charts/deepseek-harness >/dev/null
 ```
 
-Acceptance criteria: the CLI reports the pinned version; the dumped `webserver.config.host` is `127.0.0.1`, with a supervisor forwarder on one concrete container IP; the unauthenticated root returns `401`, while the launch token exchanges for a cookie and loads the page; Compose reaches `healthy`; logs contain no plugin/config errors; the container does not try to hand off to a host browser; and Helm renders both persistent and ephemeral-storage variants. Build both `linux/amd64` and `linux/arm64` and actually spawn a PTY before publishing because terminal and sandbox dependencies include native code. The default entry points are `make verify`, `make build`, and `make smoke`; the optional market uses `make market-build` and `make market-smoke`, which also prove that the market package is absent from the default image.
+Acceptance criteria: the CLI reports the pinned version; the dumped `webserver.config.host` is `127.0.0.1`, with a proxy listener on one concrete container IP; a fresh client gets `303` + `Set-Cookie`, the same client with the cookie gets `200`, and in-container loopback still returns `401`; Compose reaches `healthy`; logs contain no plugin/config errors; the container does not try to hand off to a host browser; and Helm renders both persistent and ephemeral-storage variants. Build both `linux/amd64` and `linux/arm64` and actually spawn a PTY before publishing because terminal and sandbox dependencies include native code. The default entry points are `make verify`, `make build`, and `make smoke`; the optional market uses `make market-build` and `make market-smoke`, which also prove that the market package is absent from the default image.
 
 ## Troubleshooting
 
@@ -511,20 +510,17 @@ The last command must print `/workspace`. An `EACCES` under `/workspace` instead
 | `Dockerfile.market` | Optional derivative that pins a third-party market version on top of the default image |
 | `Dockerfile.bwrap` | Optional bubblewrap derivative for Docker hosts that cannot enforce Landlock |
 | `web.cordis.patch.yml` | Loopback Web listener and official Browser Use / browser-desktop integration |
-| `scripts/dsh-web-supervisor.cjs` | Owns the `dsh` child, mirrors its log, holds the launch token in memory, and forwards one concrete container IP to DSH loopback |
+| `scripts/dsh-web-supervisor.cjs` | Owns the `dsh` child, mirrors its log, holds the launch token in memory, and loads the proxy in the same process |
+| `scripts/dsh-web-proxy.cjs` | Semantically transparent HTTP/WS proxy: token exchange, Host gate, cookie cache/fallback injection, and failure surfaces |
 | `compose.yaml` | Persistent, loopback-only, hardened local deployment |
 | `compose.market.yaml` | Optional Compose overlay that explicitly selects the third-party community market image |
 | `compose.bwrap.yaml` | Optional overlay that selects the bubblewrap image and permits its required namespace operations |
 | `compose.podman.yaml` | Rootless Podman `keep-id` and SELinux workspace overlay |
-| `compose.lan.yaml` | Optional LAN overlay for HTTPS, Basic Auth, trusted-host, and same-origin noVNC |
-| `config/Caddyfile.lan` | Caddy configuration for the protected LAN endpoint |
-| `.env.lan.example` | Secret-free LAN configuration template |
 | `web.market.cordis.patch.yml` | Profile configuration used only by the optional market derivative |
 | `plugins/dsh-browser-desktop/` | Independently publishable DSH browser desktop bundle |
 | `charts/deepseek-harness/` | StatefulSet, PVC, headless Service, and NetworkPolicy |
 | `scripts/smoke.sh` | CLI, config, native PTY, and HTTP startup checks |
 | `scripts/bwrap-smoke.sh` | Bubblewrap workspace-write and outside-boundary denial checks |
-| `scripts/lan-smoke.sh` | LAN gateway TLS, authentication, Origin, noVNC, and port-boundary checks |
 | `scripts/podman-smoke.sh` | Rootless user mapping, persistence, Web/noVNC, and port-boundary checks |
 | `.github/workflows/ci.yml` | Compose/Helm validation and two-platform image smoke tests |
 | `assets/` | Sanitized screenshots captured from the tested container |

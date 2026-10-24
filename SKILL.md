@@ -1,6 +1,6 @@
 ---
 name: deepseek-harness-docker
-description: Deploy, configure, verify, upgrade, and troubleshoot DeepSeek Harness with the community Docker, Docker Compose, rootless Podman, and Helm runtime, including the built-in Chromium/noVNC browser, optional protected LAN gateway, optional ungoogled-chromium image, and optional plugin market. Use when users ask to run DSH or DeepSeek Harness locally or on a trusted LAN or Kubernetes, mount a writable workspace, configure model credentials safely, enable the embedded browser, minimize browser background egress, choose the market image, or diagnose container health and startup problems.
+description: Deploy, configure, verify, upgrade, and troubleshoot DeepSeek Harness with the community Docker, Docker Compose, rootless Podman, and Helm runtime, including the built-in Chromium/noVNC browser, automatic loopback login, optional ungoogled-chromium image, and optional plugin market. Use when users ask to run DSH or DeepSeek Harness locally, behind an external reverse proxy, or on Kubernetes, mount a writable workspace, configure model credentials safely, enable the embedded browser, minimize browser background egress, choose the market image, or diagnose container health and startup problems.
 ---
 
 # DeepSeek Harness Docker
@@ -9,7 +9,7 @@ Use the public `runzhliu/deepseek-harness-docker` project as the source of truth
 
 ## Preserve the security boundary
 
-- Bind native WebUI port `3080` and noVNC port `6080` to `127.0.0.1` only. For an explicit trusted-LAN request, use `compose.lan.yaml`; never publish the native ports.
+- Bind native WebUI port `3080` and noVNC port `6080` to `127.0.0.1` only. For access from other hosts, place an external reverse proxy/SSO in front and declare its authority in `DSH_TRUSTED_HOSTS`; never publish the native ports or add an in-container TLS/auth gateway.
 - Never create a public Ingress, LoadBalancer, NodePort, unrestricted `-p 3080:3080`, privileged container, or Docker socket mount.
 - Pass provider keys only at runtime through the Harness settings page, environment variables, `.env`, or Kubernetes Secrets. Never write credentials into Dockerfiles, images, Compose files committed to Git, logs, or answers.
 - Keep the named `dsh-home` volume unless the user explicitly asks to delete all Harness settings, credentials, sessions, and browser state.
@@ -29,15 +29,17 @@ Read `README.md`, `SECURITY.md`, `compose.yaml`, and `.env.example` before chang
 
 ## Choose the smallest suitable mode
 
-Use default Compose for a local, single-user WebUI with the embedded Debian Chromium desktop. The image attaches official Playwright MCP Browser Use to the same persistent Chromium used for visible human takeover. Add `compose.lan.yaml` only for an explicit trusted-LAN request, after choosing one exact bind address, an internal DNS name or IP, a Caddy Basic Auth credential, and a firewall boundary. This mode uses `caddy:2.11.4-alpine` and still represents one shared trust domain, not multi-tenancy. Select the immutable `0.2.1-rc.2-r1-ungoogled.1` tag only when the user explicitly prioritizes minimized Google background egress and accepts its contributor-binary and reduced browser-service tradeoffs. Add `compose.market.yaml` only when the user explicitly wants the community plugin market. Use headless mode for one-shot automation and Helm only when the user requests Kubernetes.
+Use default Compose for a local, single-user WebUI with the embedded Debian Chromium desktop. The image attaches official Playwright MCP Browser Use to the same persistent Chromium used for visible human takeover. The image itself stays loopback-only; for access from other hosts the operator adds an external reverse proxy/SSO and declares the authority in `DSH_TRUSTED_HOSTS`. This remains one shared trust domain, not multi-tenancy. Select the immutable `0.2.1-rc.2-r1-ungoogled.1` tag only when the user explicitly prioritizes minimized Google background egress and accepts its contributor-binary and reduced browser-service tradeoffs. Add `compose.market.yaml` only when the user explicitly wants the community plugin market. Use headless mode for one-shot automation and Helm only when the user requests Kubernetes.
 
 Use `compose.bwrap.yaml` and immutable image `0.2.1-rc.2-r1-bwrap.1` only when a Docker host cannot enforce Landlock and the user accepts `seccomp=unconfined` plus `systempaths=unconfined`. First distinguish a kernel with Landlock omitted from the active LSM list from a kernel built without Landlock; prefer enabling the existing LSM when possible. Never add `SYS_ADMIN`, `--privileged`, or the Docker socket. Require unprivileged user namespaces, run `make bwrap-smoke`, and confirm `/workspace` writes succeed while writes to the test's separate outer writable mount fail. Do not apply this overlay to rootless Podman or Kubernetes.
 
 For an explicitly rootless Podman deployment, require Podman 4.5 and `podman-compose 1.6.0` or newer, then add `compose.podman.yaml`. Confirm `podman info --format '{{.Host.Security.Rootless}}'` returns `true`. The overlay maps the caller to container UID/GID 1000 and privately labels the workspace on SELinux hosts; authorize one dedicated project directory and never broaden the mount to a shared home or filesystem root. Use `make podman-smoke` when validation is requested.
 
-## Enable protected LAN access
+## Behind an external reverse proxy
 
-Follow the `.env.lan.example` and README procedure. Generate the bcrypt hash without recording its plaintext, keep `.env.lan` private, bind `DSH_LAN_BIND_ADDRESS` to one exact server LAN IP, and prefer an internal DNS name for `DSH_LAN_HOST`. Start with `make lan-up`, install the persistent Caddy internal CA root on authorized clients, and use the DSH launch token only through the resulting HTTPS URL. Verify with `make lan-smoke`. Tell the user that all authenticated clients share the same Harness authority and that mutually untrusted users need isolated instances and volumes.
+This image ships no in-container TLS or authentication gateway. Keep `3080`/`6080` on host loopback and place the operator's reverse proxy/SSO outside the container. Forward the browser `Host` verbatim and declare each allowed authority in `DSH_TRUSTED_HOSTS` (space/comma separated, optional port); the in-container proxy and DSH share that single list. Do not buffer responses or compress SSE, pass WebSocket upgrades through, and keep one origin for the UI, `/api`, and noVNC. The proxy logs in automatically, so `?token=` is only a fallback. In-container loopback probes still return `401`; `localhost` is intentionally not treated as loopback.
+
+The README contains a non-normative Caddy example; do not present it as a supported configuration. A `--trusted-host` passed on the command line fails startup by design.
 
 ## Start the default local runtime
 
@@ -60,7 +62,8 @@ Follow the `.env.lan.example` and README procedure. Generate the bcrypt hash wit
 4. Wait for the `deepseek-harness` service to become healthy. Verify both surfaces:
 
    ```bash
-   test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:3080/)" = 401
+   test "$(curl --silent --output /dev/null --write-out '%{http_code}' -c /tmp/dsh-cookies http://127.0.0.1:3080/)" = 303
+   test "$(curl --silent --output /dev/null --write-out '%{http_code}' -b /tmp/dsh-cookies http://127.0.0.1:3080/)" = 200
    curl --fail http://127.0.0.1:6080/novnc-debian-1.6.0-2/vnc.html
    docker compose logs --tail=120 deepseek-harness
    ```

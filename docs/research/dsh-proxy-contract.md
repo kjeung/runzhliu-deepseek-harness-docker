@@ -23,6 +23,15 @@ otherwise.
 > designed here consumes that supervisor boundary. Everything below is the
 > 2026-10-20 capture and is kept as evidence, not as current state.
 
+> **Errata (2026-10-24, #15):** the proxy is implemented in
+> `scripts/dsh-web-proxy.cjs` and loaded by the supervisor in the same
+> process; the forwarder named above is retired. This spec fixes the v1
+> browser-cookie cache and fallback-injection model, the per-client exchange
+> budget, the failure-surface routing, and `DSH_TRUSTED_HOSTS` as the single
+> Host-gate source. Where this note differs (notably §8/§11.C retry breadth and
+> the failure UX), spec #15 and the current code win; the 2026-10-20 evidence
+> below is unchanged.
+
 ---
 
 ## 0. Verdict

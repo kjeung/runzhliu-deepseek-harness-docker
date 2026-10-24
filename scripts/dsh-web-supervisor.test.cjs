@@ -9,7 +9,7 @@ const { spawn } = require('node:child_process');
 const { once } = require('node:events');
 const { after, before, test } = require('node:test');
 
-const { createForwarder, createSupervisor } = require('./dsh-web-supervisor.cjs');
+const { createSupervisor } = require('./dsh-web-supervisor.cjs');
 
 const supervisorPath = path.join(__dirname, 'dsh-web-supervisor.cjs');
 const token = () => crypto.randomBytes(32).toString('base64url');
@@ -222,45 +222,33 @@ test('explicit stop resets to starting and a fresh start recaptures a rotated to
   assert.notEqual(rotated.token, first);
 });
 
-test('the forwarder preserves request bytes and long-lived bidirectional traffic', async t => {
-  const target = net.createServer(socket => socket.pipe(socket));
-  target.listen(0, '127.0.0.1');
-  await once(target, 'listening');
-  t.after(() => new Promise(resolve => target.close(resolve)));
-  const forwarder = createForwarder({ host: '127.0.0.1', port: 0, targetHost: '127.0.0.1', targetPort: target.address().port });
-  await forwarder.listen();
-  t.after(() => forwarder.close());
-  const client = net.connect(forwarder.server.address().port, '127.0.0.1');
-  t.after(() => client.destroy());
-  await once(client, 'connect');
-  for (const payload of [Buffer.from('GET /api HTTP/1.1\r\nHost: dsh.test\r\nOrigin: https://dsh.test\r\nCookie: demo=1\r\nUpgrade: websocket\r\n\r\n'), Buffer.from([0, 255, 1, 2, 3])]) {
-    const response = once(client, 'data');
-    client.write(payload);
-    assert.deepEqual((await response)[0], payload);
-  }
-  const closed = once(client, 'close');
-  await forwarder.close();
-  await closed;
+test('an explicit --trusted-host on the command line fails closed at startup', { timeout: 15000 }, async t => {
+  const child = spawn(process.execPath, [supervisorPath, 'web', '--no-open', '--trusted-host', 'evil.test'], {
+    env: { ...process.env, DSH_WEB_SUPERVISOR_NO_LISTENER: '1' },
+    stdio: 'ignore',
+  });
+  t.after(() => child.kill('SIGKILL'));
+  const [code] = await once(child, 'exit');
+  assert.equal(code, 1);
 });
 
-test('client half-close does not truncate the upstream response', async t => {
-  const target = net.createServer({ allowHalfOpen: true }, socket => {
-    socket.resume();
-    socket.on('end', () => socket.end('complete response'));
+test('DSH_TRUSTED_HOSTS is appended as repeated --trusted-host arguments for dsh', { timeout: 15000 }, async t => {
+  const script = childScript('trusted.sh', ["printf 'argv:%s\\n' \"$*\"", HOLD].join('\n'));
+  const child = spawn(process.execPath, [supervisorPath, 'web', '--no-open'], {
+    env: {
+      ...process.env,
+      DSH_WEB_SUPERVISOR_CHILD: script,
+      DSH_WEB_SUPERVISOR_NO_LISTENER: '1',
+      DSH_TRUSTED_HOSTS: 'dsh.test,other.test:8443',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
-  target.listen(0, '127.0.0.1');
-  await once(target, 'listening');
-  t.after(() => new Promise(resolve => target.close(resolve)));
-  const forwarder = createForwarder({ host: '127.0.0.1', port: 0, targetHost: '127.0.0.1', targetPort: target.address().port });
-  await forwarder.listen();
-  t.after(() => forwarder.close());
-  const client = net.connect(forwarder.server.address().port, '127.0.0.1');
-  let response = '';
-  client.on('data', chunk => { response += chunk; });
-  const closed = once(client, 'close');
-  client.end('request');
-  await closed;
-  assert.equal(response, 'complete response');
+  t.after(() => child.kill('SIGKILL'));
+  let output = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', chunk => { output += chunk; });
+  await new Promise(resolve => setTimeout(resolve, 600));
+  assert.match(output, /--trusted-host dsh\.test --trusted-host other\.test:8443/);
 });
 
 test('the supervisor process forwards SIGTERM to its child and propagates the mapped code', { timeout: 15000 }, async t => {
@@ -287,7 +275,7 @@ test('the supervisor process propagates a natural non-zero child exit code', { t
   assert.equal(code, 7);
 });
 
-test('an unresolvable forwarder interface fails closed', { timeout: 15000 }, async t => {
+test('an unresolvable listen interface fails closed', { timeout: 15000 }, async t => {
   const script = childScript('keepalive.sh', [HOLD].join('\n'));
   const child = spawn(process.execPath, [supervisorPath, 'web', '--no-open'], {
     env: { ...process.env, DSH_WEB_SUPERVISOR_CHILD: script, DSH_WEB_RELAY_INTERFACE: 'dsh-test-nonexistent-interface' },

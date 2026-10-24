@@ -12,14 +12,11 @@ UNGOOGLED_CHROMIUM_VERSION ?= 152.0.7977.82-1
 UNGOOGLED_CHROMIUM_AMD64_SHA256 ?= 2c6e464e030f87145e42553c5aa539f6e62163ce677d3eace3c51b4fcbd5e347
 UNGOOGLED_CHROMIUM_ARM64_SHA256 ?= 1909f42dcc3661bc213f2cf3b5232a9d3c850913b36efa7267ed6499f6cbf87d
 UNGOOGLED_IMAGE_VERSION ?= $(IMAGE_VERSION)-ungoogled.1
-CADDY_VERSION ?= 2.11.4
-CADDY_IMAGE ?= docker.io/library/caddy:$(CADDY_VERSION)-alpine
 PODMAN ?= podman
 PODMAN_COMPOSE ?= podman-compose
-LAN_ENV_FILE ?= .env.lan
 PLATFORMS ?= linux/amd64,linux/arm64
 
-.PHONY: help build multiarch-build push pull ghcr-pull bwrap-build bwrap-push bwrap-pull bwrap-smoke bwrap-inspect ungoogled-build ungoogled-multiarch-build ungoogled-push ungoogled-pull ungoogled-smoke ungoogled-inspect market-build market-push market-pull up down logs lan-up lan-down lan-logs lan-smoke podman-up podman-down podman-logs podman-smoke compose-check helm-check plugin-check dockerhub-check version-check verify upstream-check smoke market-smoke inspect ghcr-inspect market-inspect
+.PHONY: help build multiarch-build push pull ghcr-pull bwrap-build bwrap-push bwrap-pull bwrap-smoke bwrap-inspect ungoogled-build ungoogled-multiarch-build ungoogled-push ungoogled-pull ungoogled-smoke ungoogled-inspect market-build market-push market-pull up down logs podman-up podman-down podman-logs podman-smoke compose-check helm-check plugin-check dockerhub-check version-check verify upstream-check smoke market-smoke inspect ghcr-inspect market-inspect
 
 help:
 	@echo "build            Build the local platform image"
@@ -36,8 +33,6 @@ help:
 	@echo "market-build     Build the optional community-market image"
 	@echo "market-push      Build and push its versioned multi-platform image"
 	@echo "up/down/logs     Manage the Compose service"
-	@echo "lan-up/down/logs Manage the opt-in HTTPS LAN gateway (LAN_ENV_FILE=.env.lan)"
-	@echo "lan-smoke        Test the authenticated TLS LAN gateway end to end"
 	@echo "podman-up/down   Manage the rootless Podman Compose deployment"
 	@echo "podman-smoke     Test bind ownership, Web health, and loopback ports under rootless Podman"
 	@echo "verify           Validate Compose and Helm rendering"
@@ -106,23 +101,11 @@ down:
 logs:
 	docker compose logs --follow deepseek-harness
 
-lan-up:
-	docker compose --env-file $(LAN_ENV_FILE) -f compose.yaml -f compose.lan.yaml pull
-	docker compose --env-file $(LAN_ENV_FILE) -f compose.yaml -f compose.lan.yaml up --detach --no-build
-
-lan-down:
-	docker compose --env-file $(LAN_ENV_FILE) -f compose.yaml -f compose.lan.yaml down
-
-lan-logs:
-	docker compose --env-file $(LAN_ENV_FILE) -f compose.yaml -f compose.lan.yaml logs --follow deepseek-harness lan-gateway
-
 compose-check:
 	docker compose config --quiet
 	docker compose -f compose.yaml -f compose.market.yaml config --quiet
 	docker compose -f compose.yaml -f compose.bwrap.yaml config --quiet
 	docker compose -f compose.yaml -f compose.podman.yaml config --quiet
-	DSH_LAN_BIND_ADDRESS=127.0.0.1 DSH_LAN_HOST=dsh-lan.test DSH_LAN_USERNAME=smoke DSH_LAN_PASSWORD_HASH=not-used CADDY_IMAGE=$(CADDY_IMAGE) docker compose -f compose.yaml -f compose.lan.yaml config --quiet
-	DSH_LAN_BIND_ADDRESS=127.0.0.1 DSH_LAN_HOST=dsh-lan.test DSH_LAN_USERNAME=smoke DSH_LAN_PASSWORD_HASH=not-used CADDY_IMAGE=$(CADDY_IMAGE) docker compose -f compose.yaml -f compose.market.yaml -f compose.lan.yaml config --quiet
 
 helm-check:
 	helm lint --strict charts/deepseek-harness
@@ -131,7 +114,8 @@ helm-check:
 
 plugin-check:
 	node --check scripts/dsh-web-supervisor.cjs
-	node --test scripts/dsh-web-supervisor.test.cjs scripts/admin-version-policy.test.cjs
+	node --check scripts/dsh-web-proxy.cjs
+	node --test scripts/dsh-web-supervisor.test.cjs scripts/dsh-web-proxy.test.cjs scripts/admin-version-policy.test.cjs
 	node --check plugins/dsh-browser-desktop/index.js
 	node --check plugins/dsh-browser-desktop/client.js
 	node --check scripts/dsh-market-repair-store
@@ -141,7 +125,6 @@ plugin-check:
 	bash -n scripts/check-upstream-dsh.sh
 	bash -n scripts/check-version-consistency.sh
 	bash -n scripts/bwrap-smoke.sh
-	bash -n scripts/lan-smoke.sh
 	bash -n scripts/podman-smoke.sh
 	bash -n scripts/smoke.sh
 	npm --cache "$${TMPDIR:-/tmp}/dsh-browser-plugin-npm-cache" pack --dry-run --json ./plugins/dsh-browser-desktop >/dev/null
@@ -151,7 +134,7 @@ dockerhub-check:
 	bash scripts/render-dockerhub-readme.sh README.md /dev/null
 
 version-check:
-	./scripts/check-version-consistency.sh $(DSH_VERSION) $(IMAGE_VERSION) $(PNPM_VERSION) $(DSH_MARKET_VERSION) $(MARKET_IMAGE_VERSION) $(BROWSER_PLUGIN_VERSION) $(UNGOOGLED_CHROMIUM_VERSION) $(UNGOOGLED_IMAGE_VERSION) $(UNGOOGLED_CHROMIUM_AMD64_SHA256) $(UNGOOGLED_CHROMIUM_ARM64_SHA256) $(BWRAP_IMAGE_VERSION) $(CADDY_VERSION)
+	./scripts/check-version-consistency.sh $(DSH_VERSION) $(IMAGE_VERSION) $(PNPM_VERSION) $(DSH_MARKET_VERSION) $(MARKET_IMAGE_VERSION) $(BROWSER_PLUGIN_VERSION) $(UNGOOGLED_CHROMIUM_VERSION) $(UNGOOGLED_IMAGE_VERSION) $(UNGOOGLED_CHROMIUM_AMD64_SHA256) $(UNGOOGLED_CHROMIUM_ARM64_SHA256) $(BWRAP_IMAGE_VERSION)
 
 verify: compose-check helm-check plugin-check dockerhub-check version-check
 
@@ -160,9 +143,6 @@ upstream-check:
 
 smoke:
 	./scripts/smoke.sh $(IMAGE):$(IMAGE_VERSION) $(DSH_VERSION) $(PNPM_VERSION)
-
-lan-smoke:
-	CADDY_IMAGE=$(CADDY_IMAGE) ./scripts/lan-smoke.sh $(IMAGE) $(IMAGE_VERSION)
 
 podman-up:
 	$(PODMAN_COMPOSE) -f compose.yaml -f compose.podman.yaml pull
