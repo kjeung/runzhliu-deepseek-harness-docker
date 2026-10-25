@@ -31,3 +31,7 @@ _Avoid_: proven, stable
 **Relay**:
 已退役的原始 TCP 端口转发层，只搬运字节、不解析 HTTP；#13 的进程内 forwarder 也随 #15 退役，web 模式改由 proxy 承担 HTTP/WS 语义，仅作为历史称谓保留。
 _Avoid_: proxy, forwarder
+
+**Retired dir**:
+install 卷内 factory reset 的旁路目标：`.retired/<timestamp>/`，安装内容整体移入其中（move-aside，从不 delete）；npm 缓存、日志目录等基础设施不随移，会话数据（`~/.dsh`）与工作区卷亦不受触及（spec #16; decision #5）。
+_Avoid_: backup dir, temp dir, 删除、清空
