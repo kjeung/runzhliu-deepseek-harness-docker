@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
 ARG NODE_IMAGE=docker.io/library/node:24-trixie
-ARG BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.1-rc.2-r1
+ARG BASE_IMAGE=docker.io/runzhliu/deepseek-harness:0.2.1-rc.3-r1
 FROM ${NODE_IMAGE} AS market-installer
 
 ARG DSH_MARKET_VERSION=1.66.9
@@ -30,7 +30,7 @@ RUN mkdir -p /opt/dshmarket \
 FROM ${BASE_IMAGE}
 
 ARG DSH_MARKET_VERSION=1.66.9
-ARG MARKET_IMAGE_VERSION=0.2.1-rc.2-r1-market.1
+ARG MARKET_IMAGE_VERSION=0.2.1-rc.3-r1-market.1
 
 LABEL org.opencontainers.image.version="${MARKET_IMAGE_VERSION}" \
       io.github.runzhliu.deepseek-harness.variant="community-market" \
@@ -42,6 +42,7 @@ COPY scripts/deepseek-harness-entrypoint /usr/local/bin/deepseek-harness-entrypo
 COPY scripts/deepseek-harness-market-entrypoint /usr/local/bin/deepseek-harness-market-entrypoint
 COPY scripts/dsh-market-repair-store /usr/local/bin/dsh-market-repair-store
 COPY scripts/dsh-web-supervisor.cjs /opt/deepseek-harness/dsh-web-supervisor.cjs
+COPY scripts/dsh-web-proxy.cjs /opt/deepseek-harness/dsh-web-proxy.cjs
 
 USER root
 RUN chmod 0755 \
@@ -50,6 +51,7 @@ RUN chmod 0755 \
       /usr/local/bin/dsh-market-repair-store \
     && test "$(node -p 'require("/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/dshmarket/package.json").version')" = "${DSH_MARKET_VERSION}" \
     && node --check /opt/deepseek-harness/dsh-web-supervisor.cjs \
+    && node --check /opt/deepseek-harness/dsh-web-proxy.cjs \
     && node -e "import('/usr/local/lib/node_modules/@deepseek-ai/dsh/node_modules/dshmarket/lib/index.js')"
 USER node
 

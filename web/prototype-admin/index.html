@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — admin 页面与版本切换交互 (#6)</title>
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #f3f4f6; color: #111827; font-size: 14px; }
+.banner { background: #f59e0b; color: #713f12; padding: 8px 16px; font-size: 12px; font-weight: 700; text-align: center; }
+.banner a { color: #713f12; text-decoration: underline; }
+.app { max-width: 1000px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; height: calc(100vh - 44px); }
+header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+h1 { font-size: 18px; margin: 0; letter-spacing: -0.2px; }
+.kind { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: #6b7280; background: #e5e7eb; padding: 2px 10px; border-radius: 10px; }
+.variant-chip { margin-left: auto; font-size: 12px; background: #fff; border: 1px solid #e5e7eb; padding: 3px 10px; border-radius: 10px; }
+/* status bar (persistent across variants) */
+.statusbar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 12px; padding: 12px 14px; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; font-size: 12.5px; }
+.stat { min-width: 0; }
+.stat .label { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.stat .value { font-size: 15px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-weight: 700; font-size: 11px; }
+.pill.ok { background: #dcfce7; color: #166534; }
+.pill.bad { background: #fee2e2; color: #991b1b; }
+.pill.wait { background: #fef3c7; color: #92400e; }
+/* tab layout A */
+.tabs { border-bottom: 1px solid #e5e7eb; margin-bottom: 10px; display: flex; gap: 0; }
+.tab { padding: 10px 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-bottom: none; cursor: pointer; font-size: 13px; color: #6b7280; }
+.tab:hover { background: #f3f4f6; }
+.tab.active { background: #fff; color: #111827; border-bottom: 2px solid #2563eb; margin-bottom: -1px; }
+.tabpanel { display: none; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; background: #fff; }
+.tabpanel.active { display: block; }
+/* sidebar layout B */
+.shell-b { display: flex; gap: 12px; height: 100%; }
+.sidebar { width: 230px; flex-shrink: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.sidebar .nav { list-style: none; padding: 0; margin: 0 0 10px 0; display: flex; flex-direction: column; gap: 4px; }
+.sidebar .nav li { }
+.sidebar .nav button { width: 100%; text-align: left; padding: 8px 10px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; font-size: 13px; color: #374151; }
+.sidebar .nav button.active { background: #eff6ff; border-color: #2563eb; color: #1d4ed8; font-weight: 700; }
+.sidebar .nav button:hover { background: #f3f4f6; }
+.main { flex: 1; min-width: 0; background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; overflow: auto; }
+/* common cards */
+.card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 14px; margin-bottom: 10px; background: #fff; }
+.card h2 { font-size: 15px; margin: 0 0 10px 0; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.btn { border: 1px solid #e5e7eb; background: #fff; color: #111827; padding: 7px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.btn:hover { background: #f9fafb; }
+.btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+.btn.primary:hover { background: #1d4ed8; }
+.btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.btn.danger { color: #991b1b; border-color: #fecaca; }
+.btn.danger:hover { background: #fef2f2; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #f1f5f9; }
+th { color: #6b7280; font-size: 11px; text-transform: uppercase; }
+tr:hover { background: #f9fafb; }
+.tag { font-size: 11px; padding: 2px 8px; border-radius: 8px; font-weight: 700; }
+.tag.ok { background: #dcfce7; color: #166534; }
+.tag.bad { background: #fee2e2; color: #991b1b; }
+.tag.none { background: #e5e7eb; color: #374151; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.small { color: #6b7280; font-size: 12px; }
+ul.log { list-style: none; padding: 0; margin: 0; max-height: 300px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; background: #fafafa; }
+ul.log li { padding: 7px 10px; border-bottom: 1px solid #eef2f7; font-size: 12.5px; display: flex; gap: 8px; align-items: baseline; }
+ul.log li:last-child { border-bottom: none; }
+ul.log .ts { color: #9ca3af; font-family: ui-monospace, monospace; font-size: 11px; white-space: nowrap; }
+ul.log .ok { color: #166534; font-weight: 700; }
+ul.log .bad { color: #991b1b; font-weight: 700; }
+ul.log .wait { color: #92400e; font-weight: 700; }
+/* timeline layout C */
+.timeline { border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; min-height: 400px; }
+.entry { border-bottom: 1px solid #f1f5f9; padding: 12px 14px; display: flex; gap: 12px; }
+.entry:last-child { border-bottom: none; }
+.entry .when { color: #9ca3af; font-size: 11px; font-family: ui-monospace, monospace; white-space: nowrap; flex-shrink: 0; }
+.entry .kind { font-weight: 700; font-size: 12px; }
+.entry .body { flex: 1; }
+.entry .resp { margin-top: 6px; padding: 6px 10px; background: #f3f4f6; border-radius: 6px; font-size: 12px; }
+.entry .resp .mono { color: #374151; }
+.sso { margin-top: 10px; padding: 10px 12px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; font-size: 12.5px; }
+.sso b { color: #1d4ed8; }
+/* floating bottom bar */
+.floatbar { position: fixed; bottom: 0; left: 0; right: 0; background: #111827; color: #e5e7eb; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; z-index: 50; font-size: 13px; }
+.floatbar .nav { display: flex; align-items: center; gap: 6px; }
+.floatbar .btnv { background: #374151; color: #fff; border: 1px solid #4b5563; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+.floatbar .btnv.active { background: #2563eb; border-color: #2563eb; }
+.floatbar .hint { font-size: 11.5px; color: #9ca3af; }
+.state-dump { margin-top: 10px; border: 1px solid #e5e7eb; border-radius: 8px; background: #f9fafb; }
+.state-dump pre { font-size: 11px; padding: 10px 12px; margin: 0; color: #374151; overflow: auto; max-height: 220px; }
+.hidden { display: none !important; }
+.redact { color: #9ca3af; font-size: 12px; font-style: italic; }
+</style>
+</head>
+<body>
+<div class="banner">
+  <strong>THROWAWAY PROTOTYPE — 不是生产代码，无测试，错误处理最小化。</strong>
+  胜出方案会重写并整合进真实路由；本目录与切换栏会从 main 移除，保留在一次性分支
+  <code>prototype/admin-variant-explorer</code> 作为主要来源。
+</div>
+<div class="app">
+  <header>
+    <span class="kind">admin 页面原型 · issue #6</span>
+    <h1>管理页：版本与安装交互</h1>
+    <span class="variant-chip" id="chip">variant: A</span>
+  </header>
+
+  <div class="statusbar">
+    <div class="stat"><div class="label">Supervisor</div><div class="value pill wait" id="st-supervisor">starting</div></div>
+    <div class="stat"><div class="label">当前版本</div><div class="value mono" id="st-current">—</div></div>
+    <div class="stat"><div class="label">单锁</div><div class="value pill ok" id="st-lock">空闲</div></div>
+    <div class="stat"><div class="label">Preflight (owner/space/registry)</div><div class="value pill ok" id="st-preflight">通过</div></div>
+  </div>
+
+  <div id="viewport" style="flex: 1; overflow: hidden;"></div>
+
+  <div class="state-dump">
+    <pre id="dump">{}</pre>
+  </div>
+</div>
+
+<div class="floatbar">
+  <div class="nav">
+    <span class="hint">切换方案：</span>
+    <button class="btnv" id="vA" onclick="setVariant('A')">A</button>
+    <button class="btnv" id="vB" onclick="setVariant('B')">B</button>
+    <button class="btnv" id="vC" onclick="setVariant('C')">C</button>
+    <span class="hint" style="margin-left:10px;">键盘 ← / →（输入框聚焦时不生效）· 所有状态内存中，刷新即重置</span>
+  </div>
+  <div id="floatAct"></div>
+</div>
+
+<script>
+(function () {
+  // ---------------- 桩状态机（不持久化，刷新即重置） ----------------
+  var state = {
+    variant: 'A',
+    supervisor: { status: 'starting', exitCode: null, startedAt: null },
+    current: null,
+    previous: null,
+    versions: [
+      { version: '0.1.6-alpha.1', channel: 'alpha', distTag: 'alpha', tested: true, installable: true, reason: null },
+      { version: '0.1.7-alpha.3', channel: 'alpha', distTag: null, tested: false, installable: true, reason: null },
+
+    ],
+    registryReachable: true,
+    npmrc: { registry: 'https://registry.npmjs.org/', tokenPresent: false },
+    lock: { held: false, by: null },
+    preflight: { owner: true, space: true, registry: true },
+    ssoProtected: true,
+    log: [],
+    retired: []
+  };
+  state.versions[2] = { version: '0.1.8-rc.2', channel: 'rc', distTag: 'next', tested: false, installable: false, reason: 'pairing-missing' };
+  state.versions[3] = { version: '0.1.9-beta.4', channel: 'beta', distTag: null, tested: false, installable: true, reason: null };
+
+  var focused = false;
+  window.addEventListener('focusin', function () { focused = true; });
+  window.addEventListener('focusout', function () { focused = false; });
+  window.addEventListener('keydown', function (e) {
+    if (focused) return;
+    if (e.key === 'ArrowLeft') { prevVariant(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { nextVariant(); e.preventDefault(); }
+  });
+
+  function now() { return new Date().toLocaleTimeString('zh-CN', { hour12: false }); }
+  function log(action, version, status, detail) {
+    state.log.unshift({ ts: now(), action: action, version: version || '-', status: status, detail: detail || '' });
+    render();
+  }
+
+  // ---------------- 操作（桩，消费 #13/#14/#16 约定） ----------------
+  function startSupervisor() {
+    if (state.supervisor.status === 'ready') { log('start', '-', 'bad', 'supervisor 已在运行'); return; }
+    state.supervisor = { status: 'ready', exitCode: null, startedAt: now() };
+    log('start', '-', 'ok', 'supervisor 已启动，进入 ready');
+  }
+  function stopSupervisor() {
+    if (state.supervisor.status !== 'ready') { log('stop', '-', 'bad', 'supervisor 未在运行'); return; }
+    // 显式停止重置为 starting（与 #13 对齐）
+    state.supervisor = { status: 'starting', exitCode: null, startedAt: null };
+    log('stop', '-', 'ok', '显式停止，重置为 starting');
+  }
+  function tokenTimeout() {
+    state.supervisor = { status: 'token-timeout', exitCode: null, startedAt: null };
+    log('token-timeout', '-', 'bad', 'launch token 已过期，页面保持只读');
+  }
+  function restart() {
+    stopSupervisor();
+    startSupervisor();
+    log('restart', '-', 'ok', '重新启动');
+  }
+  function setRegistryReachable(ok) {
+    state.registryReachable = ok;
+    refreshPreflight();
+    log('registry', ok ? 'reachable' : 'unreachable', ok ? 'ok' : 'bad', ok ? 'npm 源可达' : '离线/不可达：安装与版本列表受限');
+  }
+  function restoreNpmrc() {
+    state.npmrc.registry = 'https://registry.npmjs.org/';
+    state.npmrc.tokenPresent = false;
+    refreshPreflight();
+    log('npmrc', '-', 'ok', '已恢复默认源，未配置凭据');
+  }
+  function refreshPreflight() {
+    state.preflight = {
+      owner: true,
+      space: true,
+      registry: state.registryReachable
+    };
+  }
+  function install(v) {
+    var row = state.versions.find(function (r) { return r.version === v; });
+    if (!row) { log('install', v, 'bad', '版本不存在'); return; }
+    if (state.lock.held) { log('install', v, 'bad', '单锁被 ' + state.lock.by + ' 占用，安装被拒绝'); return; }
+    refreshPreflight();
+    if (!state.preflight.owner || !state.preflight.space || !state.preflight.registry) {
+      log('install', v, 'bad', 'preflight 未通过：owner=' + state.preflight.owner + ' space=' + state.preflight.space + ' registry=' + state.preflight.registry);
+      return;
+    }
+    if (!row.installable) { log('install', v, 'bad', '不可安装：' + (row.reason || '未知')); return; }
+    state.lock = { held: true, by: v };
+    log('install', v, 'wait', '预检通过，开始安装 ' + v);
+    setTimeout(function () {
+      state.previous = state.current;
+      state.current = v;
+      state.lock = { held: false, by: null };
+      log('install', v, 'ok', '已安装并切换 current -> ' + v);
+      cleanupAfterInstall(v);
+      render();
+    }, 900);
+  }
+  function cleanupAfterInstall(pending) {
+    // 保留 current + 最多 2 个旧版，其余移入 .retired（move-aside，永不 delete）
+    var installed = state.versions.map(function (r) { return r.version; }).filter(function (n) { return n !== pending; });
+    var keepNewestOld = null;
+    // 简化：保留 current 与 pending，旧的移入 retired（演示 move-aside）
+    state.retired.push(state.previous);
+    state.previous = null;
+  }
+  function rollback() {
+    if (!state.previous) { log('rollback', '-', 'bad', '无可回滚的上一版本'); return; }
+    var target = state.previous;
+    state.previous = state.current;
+    state.current = target;
+    state.retired.push(target); // 演示：旧 current 移入 retired（move-aside）
+    log('rollback', target, 'ok', 'current 符号链接回翻到 ' + target + '（flip，非重装）');
+  }
+  function reset() {
+    if (!state.current) { log('reset', '-', 'bad', '当前无已安装版本'); return; }
+    var cur = state.current;
+    state.retired.push(cur);
+    state.current = null;
+    state.previous = null;
+    state.supervisor = { status: 'starting', exitCode: null, startedAt: null };
+    log('reset', cur, 'ok', '工厂 reset：' + cur + ' 移入 .retired（move-aside，永不 delete），状态回到 starting');
+  }
+
+  // ---------------- 渲染 ----------------
+  function esc(t) { return String(t == null ? '' : t).replace(/[&<>"']/g, function (c) { return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]; }); }
+
+  function statusBarHTML() {
+    var sup = state.supervisor;
+    var supClass = sup.status === 'ready' ? 'ok' : sup.status === 'token-timeout' ? 'bad' : 'wait';
+    var cur = state.current || '—';
+    var lockClass = state.lock.held ? 'bad' : 'ok';
+    var lockText = state.lock.held ? ('被 ' + esc(state.lock.by) + ' 占用') : '空闲';
+    var pf = state.preflight;
+    var pfOk = pf.owner && pf.space && pf.registry;
+    var html = '';
+    html += '<div class="stat"><div class="label">Supervisor</div><div class="value pill ' + supClass + '">' + esc(sup.status) + (sup.exitCode !== null ? ' (exit ' + sup.exitCode + ')' : '') + '</div></div>';
+    html += '<div class="stat"><div class="label">当前版本</div><div class="value mono">' + esc(cur) + '</div></div>';
+    html += '<div class="stat"><div class="label">单锁</div><div class="value pill ' + lockClass + '">' + esc(lockText) + '</div></div>';
+    html += '<div class="stat"><div class="label">Preflight</div><div class="value pill ' + (pfOk ? 'ok' : 'bad') + '">' + (pfOk ? '通过' : '未通过') + '</div></div>';
+    return html;
+  }
+
+  function rowHTML(r) {
+    var tag = '';
+    if (r.tested) tag = '<span class="tag ok">已测试(==pin)</span>';
+    else if (!r.installable) tag = '<span class="tag bad">不可安装</span>';
+    else tag = '<span class="tag ok">可安装</span>';
+    var dist = r.distTag ? '<span class="tag none">dist-tag: ' + esc(r.distTag) + '</span>' : '<span class="tag none">dist-tag: —</span>';
+    var ch = '<span class="tag none">通道: ' + esc(r.channel) + '</span>';
+    var reason = r.reason ? '<span class="small redact">原因: ' + esc(r.reason) + '</span>' : '';
+    var btn = '';
+    if (r.version === state.current) btn = '<button class="btn" disabled>当前</button>';
+    else if (!r.installable) btn = '<button class="btn" disabled>' + esc(r.reason) + '</button>';
+    else btn = '<button class="btn primary" onclick="appInstall('' + esc(r.version) + '')">安装</button>';
+    return '<tr><td>' + esc(r.version) + '</td><td>' + ch + ' ' + dist + ' ' + tag + ' ' + reason + '</td><td style="white-space:nowrap">' + btn + '</td></tr>';
+  }
+
+  function renderA() {
+    var active = state.tabA || 'versions';
+    var panels = '';
+    panels += '<div class="tabpanel' + (active === 'versions' ? ' active' : '') + '" id="p-versions">';
+    panels += '<h2>版本列表</h2>';
+    panels += '<table><thead><tr><th>版本</th><th>通道 / dist-tag / 状态</th><th>操作</th></tr></thead><tbody>';
+    state.versions.forEach(function (r) { panels += rowHTML(r); });
+    panels += '</tbody></table>';
+    panels += '<div class="small redact">注：版本按策略引擎（#14）行输出，页面只展示，不做过滤/比较。pairing-missing 表示同版本 browser-use 缺失，安装失败闭。</div>';
+    panels += '</div>';
+
+    panels += '<div class="tabpanel' + (active === 'log' ? ' active' : '') + '" id="p-log">';
+    panels += '<h2>安装 / 回滚日志</h2>';
+    panels += '<ul class="log">';
+    if (state.log.length === 0) panels += '<li><span class="ts">—</span><span class="body">暂无操作</span></li>';
+    state.log.forEach(function (e) {
+      panels += '<li><span class="ts">' + esc(e.ts) + '</span><span class="' + esc(e.status) + '">[' + esc(e.status) + ']</span><span class="body">' + esc(e.action) + ' ' + esc(e.version) + ' — ' + esc(e.detail) + '</span></li>';
+    });
+    panels += '</ul>';
+    panels += '</div>';
+
+    panels += '<div class="tabpanel' + (active === 'npmrc' ? ' active' : '') + '" id="p-npmrc">';
+    panels += '<h2>npm 源</h2>';
+    panels += '<div class="row"><div class="label">源</div><div class="mono" style="flex:1">' + esc(state.npmrc.registry) + '</div><button class="btn" onclick="appRestoreNpmrc()" ' + (state.npmrc.registry === 'https://registry.npmjs.org/' ? 'disabled' : '') + '>恢复默认</button></div>';
+    panels += '<div class="row"><div class="label">离线/不可达</div><button class="btn ' + (state.registryReachable ? '' : 'primary') + '" onclick="appSetReachable(false)">' + (state.registryReachable ? '模拟不可达' : '已不可达') + '</button> <button class="btn ' + (state.registryReachable ? 'primary' : '') + '" onclick="appSetReachable(true)">' + (state.registryReachable ? '已可达' : '模拟可达') + '</button></div>';
+    panels += '<div class="small redact">页面绝不展示 launch token、完整日志原文或凭据；此处只显示源地址与可达性摘要。</div>';
+    panels += '</div>';
+
+    panels += '<div class="tabpanel' + (active === 'about' ? ' active' : '') + '" id="p-about">';
+    panels += '<h2>关于</h2>';
+    panels += '<div class="sso"><b>外部入口保护（SSO）</b><br/>页面不自己做登录；由容器外入口保护，浏览器看到的 authority 由会话 cookie 绑定。</div>';
+    panels += '<div class="small redact">不应出现在页面上：launch token、完整日志原文（仅脱敏摘要）、凭据。</div>';
+    panels += '<div class="card"><h3>状态快照</h3><pre>' + esc(JSON.stringify(state, null, 2)) + '</pre></div>';
+    panels += '</div>';
+
+    var tabsHtml = '';
+    ['versions', 'log', 'npmrc', 'about'].forEach(function (k) {
+      var label = { versions: '版本', log: '安装日志', npmrc: 'npm 源', about: '关于' }[k];
+      tabsHtml += '<button class="tab' + (active === k ? ' active' : '') + '" onclick="appTab('' + k + '')">' + label + '</button>';
+    });
+
+    return '<div class="tabs">' + tabsHtml + '</div>' + panels;
+  }
+
+  function renderB() {
+    var page = state.pageB || 'status';
+    var nav = '';
+    ['status', 'security', 'about'].forEach(function (k) {
+      var label = { status: '系统状态', security: '安全', about: '关于' }[k];
+      nav += '<li><button class="navbtn' + (page === k ? ' active' : '') + '" onclick="appPage('' + k + '')">' + label + '</button></li>';
+    });
+
+    var main = '';
+    if (page === 'status') {
+      main += '<h2>当前版本</h2>';
+      main += '<div class="card">';
+      main += '<div class="row"><div class="label">版本</div><div class="value mono" style="flex:1">' + esc(state.current || '—') + '</div></div>';
+      main += '<div class="row"><div class="label">Supervisor</div><div class="value">' + esc(state.supervisor.status) + '</div></div>';
+      main += '<div class="row"><div class="label">单锁</div><div class="value">' + (state.lock.held ? '被 ' + esc(state.lock.by) + ' 占用' : '空闲') + '</div></div>';
+      main += '<div class="row"><div class="label">Preflight</div><div class="value">' + (state.preflight.owner && state.preflight.space && state.preflight.registry ? '通过' : '未通过') + '</div></div>';
+      main += '</div>';
+      main += '<h2>版本列表</h2><table><thead><tr><th>版本</th><th>状态</th><th>操作</th></tr></thead><tbody>';
+      state.versions.forEach(function (r) { main += rowHTML(r); });
+      main += '</tbody></table>';
+      main += '<div class="row"><button class="btn primary" onclick="appStart()">启动</button> <button class="btn" onclick="appStop()">停止</button> <button class="btn" onclick="appTokenTimeout()">Token 过期</button> <button class="btn" onclick="appRestart()">重新启动</button></div>';
+      main += '<div class="row"><button class="btn danger" onclick="appRollback()">回滚 current</button> <button class="btn danger" onclick="appReset()">工厂 reset</button></div>';
+    } else if (page === 'security') {
+      main += '<h2>安全</h2>';
+      main += '<div class="sso"><b>外部入口保护（SSO）</b><br/>页面不自己做登录；由容器外入口保护，浏览器看到的 authority 由会话 cookie 绑定。</div>';
+      main += '<div class="row"><div class="label">不应出现于页面</div><span class="redact">launch token、完整日志原文、凭据</span></div>';
+      main += '<div class="row"><div class="label">npm 源</div><div class="mono" style="flex:1">' + esc(state.npmrc.registry) + '</div><button class="btn" onclick="appRestoreNpmrc()" ' + (state.npmrc.registry === 'https://registry.npmjs.org/' ? 'disabled' : '') + '>恢复默认</button></div>';
+      main += '<div class="row"><div class="label">离线/不可达</div><button class="btn" onclick="appSetReachable(false)">模拟不可达</button> <button class="btn" onclick="appSetReachable(true)">模拟可达</button></div>';
+    } else {
+      main += '<h2>关于</h2>';
+      main += '<div class="card"><h3>状态快照</h3><pre>' + esc(JSON.stringify(state, null, 2)) + '</pre></div>';
+    }
+    return '<div class="sidebar"><ul class="nav">' + nav + '</ul></div><div class="main">' + main + '</div>';
+  }
+
+  function renderC() {
+    var tl = '';
+    if (state.log.length === 0) {
+      tl += '<div class="entry"><div class="when">—</div><div class="kind">初始</div><div class="body">等待首个操作。默认展示状态 starting（supervisor 状态机入口）。</div></div>';
+    }
+    state.log.forEach(function (e) {
+      tl += '<div class="entry"><div class="when">' + esc(e.ts) + '</div><div class="kind">' + esc(e.action) + ' ' + esc(e.version) + '</div><div class="body">' + esc(e.detail) + '<div class="resp"><span class="mono">status: [' + esc(e.status) + ']</span>' + (e.version ? ' · version: ' + esc(e.version) : '') + '</div></div></div>';
+    });
+    var controls = '<div class="row" style="margin-bottom:10px"><button class="btn primary" onclick="appStart()">启动 supervisor</button> <button class="btn" onclick="appStop()">停止</button> <button class="btn" onclick="appTokenTimeout()">Token 过期</button> <button class="btn" onclick="appRestart()">重新启动</button></div>';
+    controls += '<div class="row" style="margin-bottom:10px"><button class="btn" onclick="appSetReachable(false)">模拟源不可达</button> <button class="btn" onclick="appSetReachable(true)">模拟源可达</button> <button class="btn" onclick="appRestoreNpmrc()" ' + (state.npmrc.registry === 'https://registry.npmjs.org/' ? 'disabled' : '') + '>恢复默认源</button></div>';
+    controls += '<div class="row" style="margin-bottom:10px"><button class="btn danger" onclick="appRollback()">回滚 current</button> <button class="btn danger" onclick="appReset()">工厂 reset</button></div>';
+    return '<div class="timeline">' + tl + '</div>' + controls + '<div class="small redact">会话式：每条条目为「操作 → 响应」，可审计。页面不做登录，仅显示「由外部入口保护」。</div>';
+  }
+
+  function render() {
+    document.getElementById('st-supervisor').textContent = state.supervisor.status + (state.supervisor.exitCode !== null ? ' (exit ' + state.supervisor.exitCode + ')' : '');
+    document.getElementById('st-supervisor').className = 'value pill ' + (state.supervisor.status === 'ready' ? 'ok' : state.supervisor.status === 'token-timeout' ? 'bad' : 'wait');
+    document.getElementById('st-current').textContent = state.current || '—';
+    document.getElementById('st-lock').textContent = state.lock.held ? ('被 ' + state.lock.by + ' 占用') : '空闲';
+    document.getElementById('st-lock').className = 'value pill ' + (state.lock.held ? 'bad' : 'ok');
+    var pfOk = state.preflight.owner && state.preflight.space && state.preflight.registry;
+    document.getElementById('st-preflight').textContent = pfOk ? '通过' : '未通过';
+    document.getElementById('st-preflight').className = 'value pill ' + (pfOk ? 'ok' : 'bad');
+    document.getElementById('chip').textContent = 'variant: ' + state.variant;
+    ['vA', 'vB', 'vC'].forEach(function (id) {
+      var el = document.getElementById(id);
+      el.className = 'btnv' + (id === 'v' + state.variant ? ' active' : '');
+    });
+    var inner = '';
+    if (state.variant === 'A') inner = renderA();
+    else if (state.variant === 'B') inner = renderB();
+    else inner = renderC();
+    document.getElementById('viewport').innerHTML = inner;
+    document.getElementById('dump').textContent = JSON.stringify(state, null, 2);
+    // float actions (contextual)
+    var fa = document.getElementById('floatAct');
+    if (state.variant === 'A') fa.innerHTML = '<button class="btn" onclick="appStart()">启动</button> <button class="btn" onclick="appStop()">停止</button> <button class="btn danger" onclick="appReset()">reset</button>';
+    else if (state.variant === 'B') fa.innerHTML = '<button class="btn" onclick="appStart()">启动</button> <button class="btn" onclick="appStop()">停止</button> <button class="btn danger" onclick="appReset()">reset</button>';
+    else fa.innerHTML = '';
+  }
+
+  // ---------------- 全局入口（供 HTML onclick 调用） ----------------
+  window.appInstall = install;
+  window.appStart = startSupervisor;
+  window.appStop = stopSupervisor;
+  window.appTokenTimeout = tokenTimeout;
+  window.appRestart = restart;
+  window.appRollback = rollback;
+  window.appReset = reset;
+  window.appSetReachable = setRegistryReachable;
+  window.appRestoreNpmrc = restoreNpmrc;
+  window.appTab = function (k) { state.tabA = k; render(); };
+  window.appPage = function (k) { state.pageB = k; render(); };
+  window.setVariant = function (v) {
+    state.variant = v;
+    // file:// / 受限上下文里 history.replaceState 可能抛 SecurityError 或被静默忽略，
+    // 此时退化：先尝试 location.replace（保留查询串），再失败也保证切换与渲染一定生效。
+    try {
+      history.replaceState(null, '', '?variant=' + v);
+    } catch (e) {
+      try { location.replace('?variant=' + v); } catch (e2) { /* 忽略，仅内存态 */ }
+    }
+    render();
+  };
+  function prevVariant() {
+    var order = ['A', 'B', 'C'];
+    var i = order.indexOf(state.variant);
+    setVariant(order[(i - 1 + order.length) % order.length]);
+  }
+  function nextVariant() {
+    var order = ['A', 'B', 'C'];
+    var i = order.indexOf(state.variant);
+    setVariant(order[(i + 1) % order.length]);
+  }
+
+  // ---------------- 初始化 ----------------
+  (function init() {
+    // 读 href 而非 search：file:// 下 search 可能为空，href 始终携带查询串
+    var m = window.location.href.match(/[?&]variant=([ABC])/);
+    if (m) state.variant = m[1];
+    refreshPreflight();
+    render();
+  })();
+</script>
+</body>
+</html>
