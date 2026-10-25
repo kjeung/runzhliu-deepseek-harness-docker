@@ -140,7 +140,7 @@ ul.log .wait { color: #92400e; font-weight: 700; }
     versions: [
       { version: '0.1.6-alpha.1', channel: 'alpha', distTag: 'alpha', tested: true, installable: true, reason: null },
       { version: '0.1.7-alpha.3', channel: 'alpha', distTag: null, tested: false, installable: true, reason: null },
-      { function: null }
+
     ],
     registryReachable: true,
     npmrc: { registry: 'https://registry.npmjs.org/', tokenPresent: false },
@@ -422,7 +422,13 @@ ul.log .wait { color: #92400e; font-weight: 700; }
   window.appPage = function (k) { state.pageB = k; render(); };
   window.setVariant = function (v) {
     state.variant = v;
-    history.replaceState(null, '', '?variant=' + v);
+    // file:// / 受限上下文里 history.replaceState 可能抛 SecurityError 或被静默忽略，
+    // 此时退化：先尝试 location.replace（保留查询串），再失败也保证切换与渲染一定生效。
+    try {
+      history.replaceState(null, '', '?variant=' + v);
+    } catch (e) {
+      try { location.replace('?variant=' + v); } catch (e2) { /* 忽略，仅内存态 */ }
+    }
     render();
   };
   function prevVariant() {
@@ -438,7 +444,8 @@ ul.log .wait { color: #92400e; font-weight: 700; }
 
   // ---------------- 初始化 ----------------
   (function init() {
-    var m = window.location.search.match(/[?&]variant=([ABC])/);
+    // 读 href 而非 search：file:// 下 search 可能为空，href 始终携带查询串
+    var m = window.location.href.match(/[?&]variant=([ABC])/);
     if (m) state.variant = m[1];
     refreshPreflight();
     render();
