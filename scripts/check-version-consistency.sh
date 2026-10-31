@@ -25,21 +25,49 @@ require_literal() {
 # A partial bump is the failure mode this guard exists for: one file moves to a
 # new release while the rest of the build stays behind, and every single-pin
 # assertion above still passes because each file is individually coherent.
-# Build, script and workflow files carry no release history, so any DSH release
-# literal there other than the pinned one is stale by definition.
+# These files carry no release history, so any DSH release literal other than
+# the pinned one is stale by definition.
+#
+# Two inputs are excluded, both for the same reason: they are prose about past
+# releases rather than build pins.
+#   - Chart.yaml's artifacthub.io/changes block accumulates one entry per
+#     release, so it names the previous version forever.
+#   - README/SKILL command snippets are asserted explicitly at the bottom of
+#     this script instead, because the surrounding prose must keep its
+#     historical screenshot captions on older versions.
 require_no_stale_release() {
-  local file
+  local file literal
   for file in "$@"; do
+    if [[ ! -f "${file}" ]]; then
+      printf 'version consistency check failed: %s is missing\n' "${file}" >&2
+      return 1
+    fi
     local stale
-    stale="$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+' "${file}" | grep -F -v -x -- "${dsh_version}" || true)"
-    if [[ -n "${stale}" ]]; then
+    # Only a no-match grep (exit 1) is acceptable. Anything else -- an unreadable
+    # file, a broken argument -- must fail loudly instead of silently narrowing
+    # the coverage this guard exists to provide.
+    stale="$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+' "${file}")" || {
+      local status=$?
+      if [[ "${status}" -eq 1 ]]; then
+        stale=""
+      else
+        printf 'version consistency check failed: could not scan %s\n' "${file}" >&2
+        return 1
+      fi
+    }
+    local filtered
+    filtered="$(grep -F -v -x -- "${dsh_version}" <<<"${stale}")" || true
+    if [[ -n "${filtered}" ]]; then
       printf 'version consistency check failed: %s still refers to %s (pinned DSH is %s)\n' \
-        "${file}" "$(tr '\n' ' ' <<<"${stale}" | sed 's/ $//')" "${dsh_version}" >&2
+        "${file}" "$(tr '\n' ' ' <<<"${filtered}" | sed 's/ $//')" "${dsh_version}" >&2
       return 1
     fi
   done
 }
 
+# Chart.yaml is checked through its two structural pins only (appVersion and
+# artifacthub.io/images); see the note above for why its changes block cannot
+# be scanned for stale literals.
 require_no_stale_release \
   Dockerfile \
   Dockerfile.market \
@@ -50,7 +78,6 @@ require_no_stale_release \
   compose.podman.yaml \
   .env.example \
   Makefile \
-  charts/deepseek-harness/Chart.yaml \
   charts/deepseek-harness/values.yaml \
   scripts/smoke.sh \
   scripts/podman-smoke.sh \
@@ -165,6 +192,19 @@ require_literal SKILL.md 'compose.podman.yaml'
 require_literal README.md 'compose.bwrap.yaml'
 require_literal README.en.md 'compose.bwrap.yaml'
 require_literal SKILL.md 'compose.bwrap.yaml'
+
+# Command-form pins in documentation. The tag assertions above pass as long as
+# the tag appears somewhere in the file, so a copy-pasteable command can keep
+# naming the previous release while the prose around it is already upgraded.
+# Assert these exact command lines instead of scanning the whole file, because
+# the same files must keep their historical screenshot captions.
+require_literal README.md "export DSH_IMAGE_VERSION=${ungoogled_image_version}"
+require_literal README.en.md "export DSH_IMAGE_VERSION=${ungoogled_image_version}"
+require_literal SKILL.md "export DSH_IMAGE_VERSION=${ungoogled_image_version}"
+require_literal README.md "--set image.tag=${image_version}"
+require_literal README.en.md "--set image.tag=${image_version}"
+require_literal README.md "--set image.tag=${market_image_version}"
+require_literal README.en.md "--set image.tag=${market_image_version}"
 
 printf 'versions are consistent: image=%s dsh=%s pnpm=%s market=%s browser-plugin=%s ungoogled-chromium=%s bwrap=%s\n' \
   "${image_version}" "${dsh_version}" "${pnpm_version}" "${market_version}" "${browser_plugin_version}" "${ungoogled_chromium_version}" "${bwrap_image_version}"
