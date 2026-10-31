@@ -13,9 +13,9 @@ All notable changes to this project are documented here.
 - Accept both the current single-URL launch line and the older single-line dual-URL shape (first 43-character token), reject non-URL `dsh web:` decoys and duplicate/empty `token` parameters, and keep the token out of supervisor diagnostics.
 - Replace the relay `node:test` suite with a supervisor spawn-boundary suite and extend the container smoke: the latest launch line stays greppable, no container file carries the token, `docker stop` exits cleanly, and a dsh startup failure surfaces as the container exit code with dsh's error visible in the log.
 
-- Upgrade the official runtime and Browser Use packages to `@deepseek-ai/dsh@0.2.1-rc.2`, with immutable container revision `0.2.1-rc.2-r1` and Helm chart `0.1.25`.
-- Include upstream DeepSeek-V4.1-Flash-1017 support and opt-in DeepSeek Search / Fetch APIs in Web Search settings; do not enable these APIs or change provider credentials automatically.
-- Refresh all three README screenshots from a real, isolated RC2 Light-theme demo, and update their capture provenance: the start page, optional community market, and browser desktop showing the official RC2 Release.
+- Upgrade the official runtime and Browser Use packages to `@deepseek-ai/dsh@0.2.1-rc.5`, with immutable container revision `0.2.1-rc.5-r1` and Helm chart `0.1.26`. This supersedes the `0.2.1-rc.3` bump that only ever landed on an unmerged branch, which is why `main` still shipped `0.2.1-rc.2` while its optional-market Dockerfile already required a `0.2.1-rc.3-r1` base image.
+- Carry the `0.2.1-rc.4` fix for diagnostics leaking into stdout in ACP mode, and the `0.2.1-rc.5` improvement to how thinking content is displayed in conversations. Retain the DeepSeek-V4.1-Flash-1017 support and the opt-in DeepSeek Search / Fetch APIs in Web Search settings from earlier 0.2.1 candidates; do not enable these APIs or change provider credentials automatically.
+- Keep the README screenshot captions pinned to the RC2 capture session they describe; refresh the surrounding baseline, tag, and feature prose to `0.2.1-rc.5`.
 - Retain browser-desktop `0.1.5`, optional market `1.66.9`, pinned ungoogled-chromium `152.0.7977.82-1`, and the existing authentication, loopback/LAN, and sandbox boundaries without modifying upstream source.
 
 ## 0.1.24 - 2026-10-17

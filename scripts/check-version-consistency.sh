@@ -22,6 +22,45 @@ require_literal() {
   fi
 }
 
+# A partial bump is the failure mode this guard exists for: one file moves to a
+# new release while the rest of the build stays behind, and every single-pin
+# assertion above still passes because each file is individually coherent.
+# Build, script and workflow files carry no release history, so any DSH release
+# literal there other than the pinned one is stale by definition.
+require_no_stale_release() {
+  local file
+  for file in "$@"; do
+    local stale
+    stale="$(grep -Eo '[0-9]+\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+' "${file}" | grep -F -v -x -- "${dsh_version}" || true)"
+    if [[ -n "${stale}" ]]; then
+      printf 'version consistency check failed: %s still refers to %s (pinned DSH is %s)\n' \
+        "${file}" "$(tr '\n' ' ' <<<"${stale}" | sed 's/ $//')" "${dsh_version}" >&2
+      return 1
+    fi
+  done
+}
+
+require_no_stale_release \
+  Dockerfile \
+  Dockerfile.market \
+  Dockerfile.bwrap \
+  compose.yaml \
+  compose.market.yaml \
+  compose.bwrap.yaml \
+  compose.podman.yaml \
+  .env.example \
+  Makefile \
+  charts/deepseek-harness/Chart.yaml \
+  charts/deepseek-harness/values.yaml \
+  scripts/smoke.sh \
+  scripts/podman-smoke.sh \
+  scripts/bwrap-smoke.sh \
+  scripts/check-upstream-dsh.sh \
+  .github/workflows/ci.yml \
+  .github/workflows/publish-dockerhub.yml \
+  .github/workflows/publish-ghcr.yml \
+  .github/workflows/upstream-dsh.yml
+
 require_literal Dockerfile "ARG DSH_VERSION=${dsh_version}"
 require_literal Dockerfile "ARG IMAGE_VERSION=${image_version}"
 require_literal Dockerfile "ARG PNPM_VERSION=${pnpm_version}"
@@ -64,10 +103,12 @@ require_literal charts/deepseek-harness/Chart.yaml "image: docker.io/runzhliu/de
 require_literal charts/deepseek-harness/values.yaml 'repository: docker.io/runzhliu/deepseek-harness'
 require_literal charts/deepseek-harness/values.yaml "tag: ${image_version}"
 require_literal scripts/smoke.sh "runzhliu/deepseek-harness:${image_version}"
+require_literal scripts/smoke.sh "expected_version=\"\${2:-${dsh_version}}\""
 require_literal scripts/dsh-container 'NARB_DISABLE_NATIVE_CACHE=1'
 require_literal scripts/deepseek-harness-entrypoint 'node /opt/deepseek-harness/dsh-web-supervisor.cjs "$@" &'
 require_literal scripts/deepseek-harness-entrypoint 'dsh-experimental-browser-use-playwright-mcp'
 require_literal scripts/podman-smoke.sh "docker.io/runzhliu/deepseek-harness:${image_version}"
+require_literal scripts/podman-smoke.sh "expected_dsh_version=\"\${2:-${dsh_version}}\""
 require_literal scripts/podman-smoke.sh 'command -v podman-compose'
 require_literal scripts/podman-smoke.sh 'podman-compose 1.6.0 or newer is required'
 require_literal scripts/bwrap-smoke.sh "docker.io/runzhliu/deepseek-harness:${bwrap_image_version}"
@@ -93,6 +134,7 @@ require_literal .github/workflows/publish-dockerhub.yml "MARKET_IMAGE_VERSION: $
 require_literal .github/workflows/publish-dockerhub.yml "UNGOOGLED_IMAGE_VERSION: ${ungoogled_image_version}"
 require_literal .github/workflows/publish-dockerhub.yml "BWRAP_IMAGE_VERSION: ${bwrap_image_version}"
 require_literal .github/workflows/upstream-dsh.yml "./scripts/check-upstream-dsh.sh ${dsh_version}"
+require_literal scripts/check-upstream-dsh.sh "pinned_version=\"\${1:-${dsh_version}}\""
 require_literal plugins/dsh-browser-desktop/package.json "\"version\": \"${browser_plugin_version}\""
 require_literal plugins/dsh-browser-desktop/package.json '"@deepseek-ai/dsh-client-modules"'
 require_literal web.cordis.patch.yml "name: '@deepseek-ai/dsh-browser-use'"
