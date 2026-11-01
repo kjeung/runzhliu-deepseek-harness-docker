@@ -496,7 +496,7 @@ docker compose ps
 docker compose logs --no-color deepseek-harness
 ```
 
-通过标准包括：CLI 版本等于构建版本；dump 后的 `webserver.config.host` 为 `127.0.0.1`，另有单个具体容器 IP 上的 proxy 监听；新客户端首页返回 `303` + `Set-Cookie`，同一客户端带 cookie 后返回 `200`，容器内 loopback 仍返回 `401`；容器进入 healthy；日志没有配置或插件加载错误；容器不会尝试调用宿主默认浏览器。真正发布镜像前还要分别在 `linux/amd64` 和 `linux/arm64` 上构建并实际 spawn PTY，因为终端与沙箱相关依赖包含原生模块。仓库提供 `make verify`、`make build` 和 `make smoke` 作为默认入口；可选市场另用 `make market-build` 和 `make market-smoke`，并额外验证默认镜像中不存在市场包。
+通过标准包括：CLI 版本等于构建版本；dump 后的 `webserver.config.host` 为 `127.0.0.1`，另有单个具体容器 IP 上的 proxy 监听；新客户端首页返回 `303` + `Set-Cookie`，同一客户端带 cookie 后返回 `200`，容器内 loopback 仍返回 `401`；容器进入 healthy；日志没有配置或插件加载错误；容器不会尝试调用宿主默认浏览器。本仓库不发布镜像，但如果你要把构建产物分发到别的架构或集群，仍需分别在 `linux/amd64` 和 `linux/arm64` 上构建并实际 spawn PTY，因为终端与沙箱相关依赖包含原生模块。仓库提供 `make verify`、`make build` 和 `make smoke` 作为默认入口；可选市场另用 `make market-build` 和 `make market-smoke`，并额外验证默认镜像中不存在市场包。
 
 ## 常见问题
 
