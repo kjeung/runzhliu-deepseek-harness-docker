@@ -51,11 +51,11 @@ The README contains a non-normative Caddy example; do not present it as a suppor
    ```
 
 2. Resolve the requested workspace to an absolute path and confirm it is the intended writable directory.
-3. Pull and start without rebuilding unless the user asks for a local source build:
+3. Build and start. This repository publishes no images, so a local build is the normal path; there is nothing to pull:
 
    ```bash
-   DSH_WORKSPACE=/absolute/path/to/project docker compose pull
-   DSH_WORKSPACE=/absolute/path/to/project docker compose up -d --no-build
+   DSH_WORKSPACE=/absolute/path/to/project docker compose build --pull
+   DSH_WORKSPACE=/absolute/path/to/project docker compose up -d
    docker compose ps
    ```
 
@@ -72,12 +72,12 @@ The README contains a non-normative Caddy example; do not present it as a suppor
 
 ## Select the optional ungoogled browser
 
-Keep Debian Chromium as the default. For an explicit privacy-focused deployment, select the separate immutable image before pulling and starting:
+Keep Debian Chromium as the default. For an explicit privacy-focused deployment, build the separate variant first:
 
 ```bash
+make ungoogled-build
 export DSH_IMAGE_VERSION=0.2.1-rc.5-r1-ungoogled.1
-DSH_WORKSPACE=/absolute/path/to/project docker compose pull
-DSH_WORKSPACE=/absolute/path/to/project docker compose up -d --no-build
+DSH_WORKSPACE=/absolute/path/to/project docker compose up -d
 ```
 
 This image keeps its browser profile under `/home/node/.dsh/chrome-profile-ungoogled`. Do not point it at the default Chromium profile. Report that Safe Browsing, sync, push, Widevine, and Web Store integration may be absent or require manual setup. When validating the variant, inspect `/proc/net/tcp` and `/proc/net/tcp6` for remote port `146C` (hexadecimal 5228) and confirm `/tmp/dsh-desktop/chromium.log` has no `google_apis/gcm` entry.
@@ -88,9 +88,9 @@ Keep the default image unchanged and opt in through the overlay:
 
 ```bash
 DSH_WORKSPACE=/absolute/path/to/project \
-  docker compose -f compose.yaml -f compose.market.yaml pull
+  docker compose -f compose.yaml -f compose.market.yaml build
 DSH_WORKSPACE=/absolute/path/to/project \
-  docker compose -f compose.yaml -f compose.market.yaml up -d --no-build
+  docker compose -f compose.yaml -f compose.market.yaml up -d
 docker compose -f compose.yaml -f compose.market.yaml ps
 ```
 
@@ -105,7 +105,7 @@ docker run --rm \
   --env DEEPSEEK_API_KEY \
   --mount type=volume,src=dsh-home,dst=/home/node/.dsh \
   --mount type=bind,src=/absolute/path/to/project,dst=/workspace \
-  runzhliu/deepseek-harness:0.2.1-rc.5-r1 \
+  deepseek-harness:0.2.1-rc.5-r1 \
   --profile headless "summarize this repository"
 ```
 

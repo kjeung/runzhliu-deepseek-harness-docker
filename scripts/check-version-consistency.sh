@@ -12,6 +12,7 @@ ungoogled_image_version="${8:?missing ungoogled image version}"
 ungoogled_amd64_sha256="${9:?missing ungoogled-chromium amd64 sha256}"
 ungoogled_arm64_sha256="${10:?missing ungoogled-chromium arm64 sha256}"
 bwrap_image_version="${11:?missing bubblewrap image version}"
+image_repository="${12:?missing image repository}"
 
 require_literal() {
   local file="$1"
@@ -103,14 +104,14 @@ require_literal Dockerfile "ARG UNGOOGLED_CHROMIUM_VERSION=${ungoogled_chromium_
 require_literal Dockerfile "ARG UNGOOGLED_CHROMIUM_AMD64_SHA256=${ungoogled_amd64_sha256}"
 require_literal Dockerfile "ARG UNGOOGLED_CHROMIUM_ARM64_SHA256=${ungoogled_arm64_sha256}"
 require_literal Dockerfile.market "ARG NODE_IMAGE=docker.io/library/node:24-trixie"
-require_literal Dockerfile.market "ARG BASE_IMAGE=docker.io/runzhliu/deepseek-harness:${image_version}"
+require_literal Dockerfile.market "ARG BASE_IMAGE=${image_repository}:${image_version}"
 require_literal Dockerfile.market "ARG DSH_MARKET_VERSION=${market_version}"
 require_literal Dockerfile.market "ARG MARKET_IMAGE_VERSION=${market_image_version}"
-require_literal Dockerfile.bwrap "ARG BASE_IMAGE=docker.io/runzhliu/deepseek-harness:${image_version}"
+require_literal Dockerfile.bwrap "ARG BASE_IMAGE=${image_repository}:${image_version}"
 require_literal Dockerfile.bwrap "ARG BWRAP_IMAGE_VERSION=${bwrap_image_version}"
 require_literal Dockerfile.bwrap 'apt-get install --yes --no-install-recommends bubblewrap'
 require_literal compose.yaml "DSH_IMAGE_VERSION:-${image_version}"
-require_literal compose.yaml 'DSH_IMAGE_REPOSITORY:-docker.io/runzhliu/deepseek-harness'
+require_literal compose.yaml "DSH_IMAGE_REPOSITORY:-${image_repository}"
 require_literal compose.yaml 'NODE_IMAGE:-docker.io/library/node:24-trixie'
 require_literal compose.yaml 'DSH_BROWSER_USE_ENABLED: ${DSH_BROWSER_USE_ENABLED:-1}'
 require_literal compose.market.yaml "MARKET_IMAGE_VERSION:-${market_image_version}"
@@ -123,22 +124,22 @@ require_literal compose.podman.yaml '${DSH_WORKSPACE:-dsh-workspace}:/workspace:
 require_literal .env.example "DSH_VERSION=${dsh_version}"
 require_literal .env.example "DSH_IMAGE_VERSION=${image_version}"
 require_literal .env.example "PNPM_VERSION=${pnpm_version}"
-require_literal .env.example 'DSH_IMAGE_REPOSITORY=docker.io/runzhliu/deepseek-harness'
+require_literal .env.example "DSH_IMAGE_REPOSITORY=${image_repository}"
 require_literal .env.example 'NODE_IMAGE=docker.io/library/node:24-trixie'
 require_literal charts/deepseek-harness/Chart.yaml "appVersion: \"${dsh_version}\""
-require_literal charts/deepseek-harness/Chart.yaml "image: docker.io/runzhliu/deepseek-harness:${image_version}"
-require_literal charts/deepseek-harness/values.yaml 'repository: docker.io/runzhliu/deepseek-harness'
+require_literal charts/deepseek-harness/Chart.yaml "image: ${image_repository}:${image_version}"
+require_literal charts/deepseek-harness/values.yaml "repository: ${image_repository}"
 require_literal charts/deepseek-harness/values.yaml "tag: ${image_version}"
-require_literal scripts/smoke.sh "runzhliu/deepseek-harness:${image_version}"
+require_literal scripts/smoke.sh "${image_repository}:${image_version}"
 require_literal scripts/smoke.sh "expected_version=\"\${2:-${dsh_version}}\""
 require_literal scripts/dsh-container 'NARB_DISABLE_NATIVE_CACHE=1'
 require_literal scripts/deepseek-harness-entrypoint 'node /opt/deepseek-harness/dsh-web-supervisor.cjs "$@" &'
 require_literal scripts/deepseek-harness-entrypoint 'dsh-experimental-browser-use-playwright-mcp'
-require_literal scripts/podman-smoke.sh "docker.io/runzhliu/deepseek-harness:${image_version}"
+require_literal scripts/podman-smoke.sh "${image_repository}:${image_version}"
 require_literal scripts/podman-smoke.sh "expected_dsh_version=\"\${2:-${dsh_version}}\""
 require_literal scripts/podman-smoke.sh 'command -v podman-compose'
 require_literal scripts/podman-smoke.sh 'podman-compose 1.6.0 or newer is required'
-require_literal scripts/bwrap-smoke.sh "docker.io/runzhliu/deepseek-harness:${bwrap_image_version}"
+require_literal scripts/bwrap-smoke.sh "${image_repository}:${bwrap_image_version}"
 require_literal scripts/bwrap-smoke.sh '--security-opt seccomp=unconfined'
 require_literal scripts/bwrap-smoke.sh '--security-opt systempaths=unconfined'
 require_literal .github/workflows/ci.yml "IMAGE_VERSION=${image_version}"
@@ -154,7 +155,9 @@ require_literal .github/workflows/ci.yml 'podman-compose==1.6.0'
 require_literal .github/workflows/ci.yml "BWRAP_IMAGE_VERSION=${bwrap_image_version}"
 require_literal .github/workflows/ci.yml './scripts/bwrap-smoke.sh deepseek-harness:ci-bwrap'
 require_literal .github/workflows/ci.yml 'bwrap: Failed to make / slave: Permission denied'
-require_literal .github/workflows/publish-ghcr.yml "default: ${image_version}"
+# Publish workflows are disabled (no image is published). They must not carry
+# version literals that could drift; the stale-release scan above still covers
+# them, so no per-version assertion is needed here.
 require_literal .github/workflows/publish-dockerhub.yml "DSH_VERSION: ${dsh_version}"
 require_literal .github/workflows/publish-dockerhub.yml "IMAGE_VERSION: ${image_version}"
 require_literal .github/workflows/publish-dockerhub.yml "MARKET_IMAGE_VERSION: ${market_image_version}"
@@ -167,23 +170,23 @@ require_literal plugins/dsh-browser-desktop/package.json '"@deepseek-ai/dsh-clie
 require_literal web.cordis.patch.yml "name: '@deepseek-ai/dsh-browser-use'"
 require_literal web.cordis.patch.yml "name: '@deepseek-ai/dsh-experimental-browser-use-playwright-mcp'"
 require_literal web.cordis.patch.yml "endpoint: 'http://127.0.0.1:9222'"
-require_literal README.md "runzhliu/deepseek-harness:${image_version}"
+require_literal README.md "${image_repository}:${image_version}"
 require_literal README.md "--build-arg DSH_VERSION=${dsh_version}"
 require_literal README.md "DSH_VERSION=${dsh_version} DSH_IMAGE_VERSION=${image_version}"
-require_literal README.md "runzhliu/deepseek-harness:${market_image_version}"
-require_literal README.md "runzhliu/deepseek-harness:${ungoogled_image_version}"
-require_literal README.md "runzhliu/deepseek-harness:${bwrap_image_version}"
+require_literal README.md "${image_repository}:${market_image_version}"
+require_literal README.md "${image_repository}:${ungoogled_image_version}"
+require_literal README.md "${image_repository}:${bwrap_image_version}"
 require_literal README.md "ungoogled-chromium@${ungoogled_chromium_version}"
 require_literal README.md "runzhliu-dsh-browser-desktop-${browser_plugin_version}.tgz"
-require_literal README.en.md "runzhliu/deepseek-harness:${image_version}"
+require_literal README.en.md "${image_repository}:${image_version}"
 require_literal README.en.md "--build-arg DSH_VERSION=${dsh_version}"
 require_literal README.en.md "DSH_VERSION=${dsh_version} DSH_IMAGE_VERSION=${image_version}"
-require_literal README.en.md "runzhliu/deepseek-harness:${market_image_version}"
-require_literal README.en.md "runzhliu/deepseek-harness:${ungoogled_image_version}"
-require_literal README.en.md "runzhliu/deepseek-harness:${bwrap_image_version}"
+require_literal README.en.md "${image_repository}:${market_image_version}"
+require_literal README.en.md "${image_repository}:${ungoogled_image_version}"
+require_literal README.en.md "${image_repository}:${bwrap_image_version}"
 require_literal README.en.md "ungoogled-chromium@${ungoogled_chromium_version}"
 require_literal README.en.md "runzhliu-dsh-browser-desktop-${browser_plugin_version}.tgz"
-require_literal SKILL.md "runzhliu/deepseek-harness:${image_version}"
+require_literal SKILL.md "${image_repository}:${image_version}"
 require_literal SKILL.md "${ungoogled_image_version}"
 require_literal SKILL.md "${bwrap_image_version}"
 require_literal README.md 'compose.podman.yaml'
@@ -205,6 +208,33 @@ require_literal README.md "--set image.tag=${image_version}"
 require_literal README.en.md "--set image.tag=${image_version}"
 require_literal README.md "--set image.tag=${market_image_version}"
 require_literal README.en.md "--set image.tag=${market_image_version}"
+
+# This repository publishes no images. Guard the policy at the level contributors
+# actually read: no document may tell a reader to pull, and the publish
+# workflows must keep their fail-closed guard step.
+# Match a pull command only at the start of a code-block line: prose that
+# explains a command is retired must stay allowed.
+require_absent_command() {
+  local file="$1" command_pattern="$2"
+  if grep -E --quiet -- "^[[:space:]]*${command_pattern}" "${file}"; then
+    printf 'publishing is disabled, but %s still instructs a pull-style command matching %s\n' \
+      "${file}" "${command_pattern}" >&2
+    return 1
+  fi
+}
+
+for doc in README.md README.en.md SKILL.md; do
+  require_absent_command "${doc}" 'docker compose pull'
+  require_absent_command "${doc}" 'podman-compose -f compose.yaml -f compose.podman.yaml pull'
+  require_absent_command "${doc}" 'docker pull '
+done
+for workflow in \
+  .github/workflows/publish-dockerhub.yml \
+  .github/workflows/publish-ghcr.yml \
+  .github/workflows/dockerhub-description.yml; do
+  require_literal "${workflow}" 'Refuse to run (publishing is disabled)'
+done
+require_literal CONTRIBUTING.md 'This repository does not publish images'
 
 printf 'versions are consistent: image=%s dsh=%s pnpm=%s market=%s browser-plugin=%s ungoogled-chromium=%s bwrap=%s\n' \
   "${image_version}" "${dsh_version}" "${pnpm_version}" "${market_version}" "${browser_plugin_version}" "${ungoogled_chromium_version}" "${bwrap_image_version}"

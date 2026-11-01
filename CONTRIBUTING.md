@@ -2,6 +2,19 @@
 
 Thanks for improving this community container project.
 
+## This repository does not publish images
+
+Images are built locally from this repository's Dockerfiles; nothing is pushed
+to Docker Hub, GHCR, or any other registry from CI. The historical publishing
+workflows under `.github/workflows/` are disabled and fail closed if dispatched.
+Consequences for contributions:
+
+- Do not add registry credentials, publish steps, or `push: true` build actions.
+- Treat `IMAGE`/`DSH_IMAGE_REPOSITORY` as a local image name; users who want a
+  registry are expected to push to their own namespace.
+- The version pins and `make verify` stay in force, because they describe what
+  a local build produces.
+
 Before opening a pull request:
 
 1. Keep `@deepseek-ai/dsh` pinned through `DSH_VERSION`, and assign every container change a separate immutable `IMAGE_VERSION`; never reuse a published tag or switch to an unbounded `latest` install.

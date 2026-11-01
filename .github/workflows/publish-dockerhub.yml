@@ -1,5 +1,9 @@
 name: Publish Docker Hub images
 
+# DISABLED: this repository no longer publishes images.
+# Kept only as a record of how previously published tags were built. Every job
+# below still runs a guard step that fails before any registry login or push,
+# so the workflow cannot ship an image even if it is dispatched by mistake.
 on:
   workflow_dispatch:
 
@@ -27,6 +31,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
+      - name: Refuse to run (publishing is disabled)
+        run: |
+          echo "This repository no longer publishes container images." >&2
+          echo "Build the image locally instead: make build (or docker compose build)." >&2
+          exit 1
       - uses: actions/checkout@v7
       - name: Validate repository pins
         run: make version-check

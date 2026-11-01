@@ -21,7 +21,7 @@ annotations:
   artifacthub.io/license: MIT
   artifacthub.io/images: |
     - name: deepseek-harness
-      image: docker.io/runzhliu/deepseek-harness:0.2.1-rc.5-r1
+      image: deepseek-harness:0.2.1-rc.5-r1
   artifacthub.io/changes: |
     - kind: changed
       description: Upgrade the official runtime and Browser Use packages to 0.2.1-rc.5, carrying the rc.4 ACP stdout-diagnostics fix and the improved thinking-content display.
