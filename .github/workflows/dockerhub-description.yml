@@ -1,13 +1,10 @@
 name: Sync Docker Hub overview
 
+# DISABLED: this repository no longer publishes images.
+# Kept only as a record of how previously published tags were built. Every job
+# below still runs a guard step that fails before any registry login or push,
+# so the workflow cannot ship an image even if it is dispatched by mistake.
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - README.md
-      - scripts/render-dockerhub-readme.sh
-      - .github/workflows/dockerhub-description.yml
   workflow_dispatch:
 
 permissions:
@@ -22,6 +19,11 @@ jobs:
     name: Publish README and short description
     runs-on: ubuntu-24.04
     steps:
+      - name: Refuse to run (publishing is disabled)
+        run: |
+          echo "This repository no longer publishes container images." >&2
+          echo "Build the image locally instead: make build (or docker compose build)." >&2
+          exit 1
       - uses: actions/checkout@v7
       - name: Render the Docker Hub overview
         run: bash scripts/render-dockerhub-readme.sh README.md README.dockerhub.md

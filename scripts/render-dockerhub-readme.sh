@@ -14,9 +14,10 @@ fi
 temporary_readme="$(mktemp)"
 trap 'rm -f "${temporary_readme}"' EXIT
 
-# Docker Hub limits repository overviews to 25,000 bytes. Keep README.md as
+# This repository no longer publishes to Docker Hub, but the 25,000-byte
+# overview budget is still enforced as a README length guard. Keep README.md as
 # the source of truth and omit only its long-form architecture analysis from
-# the generated overview. The sync action completes relative GitHub URLs.
+# the rendered copy. The sync action completes relative GitHub URLs.
 awk '
   /^## DeepSeek Harness 深入分析$/ {
     skip = 1

@@ -1,34 +1,14 @@
 name: Mirror Docker Hub images to GHCR
 
+# DISABLED: this repository no longer publishes images.
+# Kept only as a record of how previously published tags were built. Every job
+# below still runs a guard step that fails before any registry login or push,
+# so the workflow cannot ship an image even if it is dispatched by mistake.
 on:
-  release:
-    types: [published]
   workflow_dispatch:
-    inputs:
-      version:
-        description: Immutable container revision already published to Docker Hub
-        required: true
-        default: 0.2.1-rc.5-r1
-        type: string
-      include_market:
-        description: Also mirror the version-market.1 image
-        required: true
-        default: false
-        type: boolean
-      include_ungoogled:
-        description: Also mirror the version-ungoogled.1 image
-        required: true
-        default: true
-        type: boolean
-      include_bwrap:
-        description: Also mirror the version-bwrap.1 image
-        required: true
-        default: true
-        type: boolean
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: ghcr-mirror-${{ github.event_name }}-${{ github.event.release.tag_name || inputs.version }}
@@ -43,6 +23,11 @@ jobs:
     name: Copy multi-platform manifests
     runs-on: ubuntu-24.04
     steps:
+      - name: Refuse to run (publishing is disabled)
+        run: |
+          echo "This repository no longer publishes container images." >&2
+          echo "Build the image locally instead: make build (or docker compose build)." >&2
+          exit 1
       - name: Resolve immutable tags
         id: refs
         env:

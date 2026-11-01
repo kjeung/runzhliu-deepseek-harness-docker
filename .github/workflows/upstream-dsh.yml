@@ -53,7 +53,7 @@ jobs:
             echo '```'
             echo
             if [[ "${UPSTREAM_STATUS}" == "1" ]]; then
-              echo "Update every pinned version together and run the full multi-architecture smoke tests before publishing."
+              echo "Update every pinned version together and run the full multi-architecture smoke tests. This repository publishes no images; images are built locally by whoever deploys them."
             fi
           } >upstream-issue.md
           if [[ -z "${existing}" ]]; then

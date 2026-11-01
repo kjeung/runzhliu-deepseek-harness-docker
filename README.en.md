@@ -4,13 +4,12 @@ English | [简体中文](README.md)
 
 [![Upstream DSH](https://img.shields.io/github/v/release/deepseek-ai/deepseek-harness?include_prereleases&sort=semver&label=upstream%20DSH)](https://github.com/deepseek-ai/deepseek-harness/releases)
 [![Container Release](https://img.shields.io/github/v/release/runzhliu/deepseek-harness-docker?include_prereleases&sort=semver&label=container%20release)](https://github.com/runzhliu/deepseek-harness-docker/releases)
-[![Docker Image](https://img.shields.io/badge/docker.io-runzhliu%2Fdeepseek--harness-2496ED?logo=docker&logoColor=white)](https://hub.docker.com/r/runzhliu/deepseek-harness)
-[![GHCR](https://img.shields.io/badge/ghcr.io-runzhliu%2Fdeepseek--harness-2088FF?logo=github&logoColor=white)](https://github.com/users/runzhliu/packages/container/package/deepseek-harness)
+![Self-built](https://img.shields.io/badge/images-self--built%2C%20not%20published-6E6E6E?logo=docker&logoColor=white)
 [![Tencent Cloud SkillHub](https://img.shields.io/badge/SkillHub-deepseek--harness--docker-00A4FF)](https://skillhub.cloud.tencent.com/skills/deepseek-harness-docker)
 [![Node.js](https://img.shields.io/badge/Node.js-24-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-**One of the earliest unofficial Docker image projects for DeepSeek Harness, maintained since [August 13, 2026](https://github.com/runzhliu/deepseek-harness-docker/commit/0d12e3bdb6dc5c0f408870b73b1914359a4f9aca).** It provides AMD64/ARM64 images on Docker Hub and GHCR, Docker Compose, rootless Podman, and Helm deployments, with ongoing upstream release tracking.
+**One of the earliest unofficial Docker image projects for DeepSeek Harness, maintained since [August 13, 2026](https://github.com/runzhliu/deepseek-harness-docker/commit/0d12e3bdb6dc5c0f408870b73b1914359a4f9aca).** It provides Dockerfiles, Docker Compose, rootless Podman, and Helm deployments, with ongoing upstream release tracking. Images are built locally by whoever deploys them; this repository publishes none.
 
 The default image runs the official `@deepseek-ai/dsh` Web UI in a non-root Node.js 24 runtime, with a visible Chromium/noVNC desktop, an optional community plugin market, and an external reverse-proxy entry contract. It packages official npm artifacts without modifying DeepSeek Harness source.
 
@@ -129,10 +128,10 @@ When Landlock is compiled into the kernel but omitted from the active LSM list, 
 DSH_WORKSPACE=/absolute/path/to/project \
   docker compose -f compose.yaml -f compose.bwrap.yaml pull
 DSH_WORKSPACE=/absolute/path/to/project \
-  docker compose -f compose.yaml -f compose.bwrap.yaml up -d --no-build
+  docker compose -f compose.yaml -f compose.bwrap.yaml up -d
 ```
 
-The overlay selects immutable image `runzhliu/deepseek-harness:0.2.1-rc.5-r1-bwrap.1` and adds `seccomp=unconfined` plus `systempaths=unconfined`, allowing non-root `bwrap` to create its inner user/mount/PID namespace and mount a fresh `/proc`. UID 1000, a read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, and minimal mounts remain in force. The two options still widen the outer container's syscall and `/proc` surface, so this variant never becomes the default. The host must also permit unprivileged user namespaces.
+The overlay selects the locally built immutable tag `deepseek-harness:0.2.1-rc.5-r1-bwrap.1` (run `make bwrap-build` first) and adds `seccomp=unconfined` plus `systempaths=unconfined`, allowing non-root `bwrap` to create its inner user/mount/PID namespace and mount a fresh `/proc`. UID 1000, a read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`, and minimal mounts remain in force. The two options still widen the outer container's syscall and `/proc` surface, so this variant never becomes the default. The host must also permit unprivileged user namespaces.
 
 This path is supported only for Docker Compose, not rootless Podman or Kubernetes. On Podman hosts where Landlock exists in the kernel, enable that LSM instead. Reproduce the confinement boundary on the target Docker host with:
 
@@ -165,9 +164,11 @@ DeepSeek Harness Web exchanges a launch token for a signed browser cookie and ch
 
 From this directory:
 
+This repository publishes no images, so the first step is a build rather than a pull:
+
 ```bash
-docker compose pull
-DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d --no-build
+docker compose build --pull
+DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d
 docker compose ps
 docker compose logs --no-color deepseek-harness | grep 'dsh web:'
 ```
@@ -176,7 +177,7 @@ Open <http://127.0.0.1:3080> directly: the in-container proxy completes the laun
 
 When `DSH_WORKSPACE` is unset, Compose uses a separate `dsh-workspace` named volume so the Agent cannot accidentally modify this repository. Set `DSH_WORKSPACE=/absolute/path/to/project` only after choosing the intended host project.
 
-The default immutable image revision is [`runzhliu/deepseek-harness:0.2.1-rc.5-r1`](https://hub.docker.com/r/runzhliu/deepseek-harness). The same multi-platform artifact is also published to GitHub Container Registry as [`ghcr.io/runzhliu/deepseek-harness:0.2.1-rc.5-r1`](https://github.com/users/runzhliu/packages/container/package/deepseek-harness). `r1` attaches the matching official Playwright MCP Browser Use provider to the visible Chromium and retains versioned noVNC asset paths so an upgrade cannot mix incompatible cached ES modules. Compose keeps the build definition for reproducibility and review; run `docker compose build --pull` before startup when you explicitly want a local build.
+A local build is tagged `deepseek-harness:0.2.1-rc.5-r1`. `IMAGE_VERSION` is a local tag only; it no longer corresponds to any published remote artifact. `r1` attaches the matching official Playwright MCP Browser Use provider to the visible Chromium and retains versioned noVNC asset paths so an upgrade cannot mix incompatible cached ES modules. For multi-architecture output or a private registry, point `IMAGE` at your own namespace and use `make multiarch-build`; `make push` and `docker compose pull` are retired here and fail with an explanatory error.
 
 ### Rootless Podman
 
@@ -188,9 +189,9 @@ podman-compose version
 podman info --format '{{.Host.Security.Rootless}}'  # must be true
 
 DSH_WORKSPACE=/absolute/path/to/your/project \
-  podman-compose -f compose.yaml -f compose.podman.yaml pull
+  podman-compose -f compose.yaml -f compose.podman.yaml build
 DSH_WORKSPACE=/absolute/path/to/your/project \
-  podman-compose -f compose.yaml -f compose.podman.yaml up -d --no-build
+  podman-compose -f compose.yaml -f compose.podman.yaml up -d
 podman-compose -f compose.yaml -f compose.podman.yaml ps
 ```
 
@@ -202,15 +203,16 @@ To keep using the Docker Compose client, expose the rootless Podman API socket a
 systemctl --user enable --now podman.socket
 export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/podman/podman.sock"
 DSH_WORKSPACE=/absolute/path/to/your/project \
-  docker compose -f compose.yaml -f compose.podman.yaml up -d --no-build
+  docker compose -f compose.yaml -f compose.podman.yaml up -d
 ```
 
-To pull from GHCR without changing the rest of the Compose deployment:
+If a cluster must pull from a private registry, push the locally built image yourself first, then point `DSH_IMAGE_REPOSITORY` at your own namespace:
 
 ```bash
-DSH_IMAGE_REPOSITORY=ghcr.io/runzhliu/deepseek-harness docker compose pull
-DSH_IMAGE_REPOSITORY=ghcr.io/runzhliu/deepseek-harness \
-  DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d --no-build
+docker tag deepseek-harness:0.2.1-rc.5-r1 registry.example.internal/dsh/deepseek-harness:0.2.1-rc.5-r1
+docker push registry.example.internal/dsh/deepseek-harness:0.2.1-rc.5-r1
+DSH_IMAGE_REPOSITORY=registry.example.internal/dsh/deepseek-harness \
+  DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d
 ```
 
 ### External entry contract
@@ -273,15 +275,15 @@ Compose gives Chromium a 1GB `/dev/shm`. The launcher adds `--no-sandbox` only t
 
 #### Optional ungoogled-chromium image
 
-The default image keeps Debian Chromium for Debian's security-update and distribution supply chain. Select the separate [`runzhliu/deepseek-harness:0.2.1-rc.5-r1-ungoogled.1`](https://hub.docker.com/r/runzhliu/deepseek-harness/tags) variant only when idle browser egress must be minimized:
+The default image keeps Debian Chromium for Debian's security-update and distribution supply chain. Build the separate `deepseek-harness:0.2.1-rc.5-r1-ungoogled.1` variant locally only when idle browser egress must be minimized:
 
 ```bash
+make ungoogled-build
 export DSH_IMAGE_VERSION=0.2.1-rc.5-r1-ungoogled.1
-docker compose pull
-DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d --no-build
+DSH_WORKSPACE=/absolute/path/to/your/project docker compose up -d
 ```
 
-This image pins `ungoogled-chromium@152.0.7977.82-1` and verifies distinct SHA256 values for the amd64 and arm64 downloads. Its smoke test starts the complete Harness/noVNC desktop, verifies the official Browser Use attachment configuration, invokes `browser_open`, and then rejects any GCM port `5228` connection or `google_apis/gcm` log. It automatically uses `/home/node/.dsh/chrome-profile-ungoogled`, separate from the default Debian Chromium profile. GHCR uses the same tag; Helm users can explicitly set `--set image.tag=0.2.1-rc.5-r1-ungoogled.1`.
+This image pins `ungoogled-chromium@152.0.7977.82-1` and verifies distinct SHA256 values for the amd64 and arm64 downloads. Its smoke test starts the complete Harness/noVNC desktop, verifies the official Browser Use attachment configuration, invokes `browser_open`, and then rejects any GCM port `5228` connection or `google_apis/gcm` log. It automatically uses `/home/node/.dsh/chrome-profile-ungoogled`, separate from the default Debian Chromium profile. Helm users can explicitly set `--set image.tag=0.2.1-rc.5-r1-ungoogled.1` once that local image is imported into the cluster.
 
 The variant uses the community [`ungoogled-chromium-portablelinux`](https://github.com/ungoogled-software/ungoogled-chromium-portablelinux) build, not a Debian package. The [upstream binary index](https://github.com/ungoogled-software/ungoogled-chromium-binaries) warns that contributor binaries may not be reproducible and their authenticity cannot be guaranteed; Google Safe Browsing, sync, push, Widevine, and Chrome Web Store integration may also be absent or require manual setup. It therefore never replaces the default image or receives a moving `latest` tag. Reproduce and test it locally with:
 
@@ -308,10 +310,10 @@ The default image, Compose stack, and Helm chart **do not contain or load a plug
 ```bash
 docker compose -f compose.yaml -f compose.market.yaml pull
 DSH_WORKSPACE=/absolute/path/to/your/project \
-  docker compose -f compose.yaml -f compose.market.yaml up -d --no-build
+  docker compose -f compose.yaml -f compose.market.yaml up -d
 ```
 
-The variant has the unambiguous `runzhliu/deepseek-harness:0.2.1-rc.5-r1-market.1` tag and pins `dshmarket@1.66.9`; it does not replace the default DSH tag or `latest`. It is an optional community integration, not a DeepSeek component, and neither DeepSeek nor this project audits or endorses catalog entries.
+The variant has an unambiguous local tag `deepseek-harness:0.2.1-rc.5-r1-market.1` (built with `make market-build`) and pins `dshmarket@1.66.9`; it does not replace the default DSH tag or `latest`. It is an optional community integration, not a DeepSeek component, and neither DeepSeek nor this project audits or endorses catalog entries.
 
 ![Light-theme community plugin market in the optional market image](assets/plugin-market-webui.png)
 
@@ -334,7 +336,7 @@ A reused `dsh-home` previously managed by another pnpm major can fail installati
 docker compose -f compose.yaml -f compose.market.yaml stop deepseek-harness
 docker compose -f compose.yaml -f compose.market.yaml run --rm --no-deps \
   --entrypoint dsh-market-repair-store deepseek-harness
-docker compose -f compose.yaml -f compose.market.yaml up -d --no-build
+docker compose -f compose.yaml -f compose.market.yaml up -d
 ```
 
 The migration relinks only dependencies declared by the existing `package.json`, pins the store under `/home/node/.dsh/pnpm-store`, and passes `--ignore-scripts`. It retains the previous `node_modules` under `/home/node/.dsh/backups/pnpm-store-*`; remove that backup yourself only after verifying the plugins.
@@ -357,7 +359,7 @@ docker compose down
 Build:
 
 ```bash
-docker build -t runzhliu/deepseek-harness:0.2.1-rc.5-r1 .
+docker build -t deepseek-harness:0.2.1-rc.5-r1 .
 ```
 
 Run the Web UI:
@@ -371,7 +373,7 @@ docker run --rm \
   --shm-size 1g \
   --mount type=volume,src=dsh-home,dst=/home/node/.dsh \
   --mount type=bind,src="$PWD",dst=/workspace \
-  runzhliu/deepseek-harness:0.2.1-rc.5-r1
+  deepseek-harness:0.2.1-rc.5-r1
 ```
 
 Open <http://127.0.0.1:3080> after startup; the proxy logs in automatically and the manual `?token=` URL stays available. Do not shorten the publication to `-p 3080:3080`, and do not place this service behind a public Ingress: this configuration does not enable Web TLS, and noVNC on 6080 has no authentication.
@@ -385,7 +387,7 @@ docker run --rm \
   --env DEEPSEEK_API_KEY \
   --mount type=volume,src=dsh-home,dst=/home/node/.dsh \
   --mount type=bind,src="$PWD",dst=/workspace \
-  runzhliu/deepseek-harness:0.2.1-rc.5-r1 \
+  deepseek-harness:0.2.1-rc.5-r1 \
   --profile headless "summarize this repository"
 ```
 
@@ -395,15 +397,24 @@ From `0.2.1-alpha.3`, Headless reads keys from environment variables and `.env` 
 
 `charts/deepseek-harness` deploys one StatefulSet replica. `/home/node/.dsh` is backed by a PVC; the workspace can use another existing PVC. The chart creates no Ingress or LoadBalancer and enables a deny-ingress NetworkPolicy by default.
 
-The chart defaults to the published Docker Hub image, so it can be installed directly:
+The chart's `image.repository` defaults to the local image name `deepseek-harness`, which no cluster can pull from a public registry, so build and import it first:
 
 ```bash
+make build
+
+# kind
+kind load docker-image deepseek-harness:0.2.1-rc.5-r1
+# minikube
+minikube image load deepseek-harness:0.2.1-rc.5-r1
+
 helm upgrade --install deepseek-harness charts/deepseek-harness \
   --namespace deepseek-harness \
   --create-namespace \
-  --set image.repository=runzhliu/deepseek-harness \
+  --set image.repository=deepseek-harness \
   --set image.tag=0.2.1-rc.5-r1
 ```
+
+Keep `image.pullPolicy=IfNotPresent` (the default) after importing, otherwise the kubelet tries to pull this nonexistent image remotely. With a private registry, push to your own namespace and set `--set image.repository=<your-registry>/deepseek-harness --set image.pullSecrets[0].name=<secret>`.
 
 Kind or Minikube can pull the default `runzhliu/deepseek-harness` image directly, or you can load a local image under the same name first.
 
@@ -438,7 +449,7 @@ The build argument pins the package:
 docker build \
   --build-arg DSH_VERSION=0.2.1-rc.5 \
   --build-arg IMAGE_VERSION=0.2.1-rc.5-r1 \
-  -t runzhliu/deepseek-harness:0.2.1-rc.5-r1 .
+  -t deepseek-harness:0.2.1-rc.5-r1 .
 ```
 
 Compose keeps the upstream version and immutable container revision separate:
@@ -447,11 +458,13 @@ Compose keeps the upstream version and immutable container revision separate:
 DSH_VERSION=0.2.1-rc.5 DSH_IMAGE_VERSION=0.2.1-rc.5-r1 docker compose build --pull
 ```
 
-Maintainers can run `make push` to build and publish the `linux/amd64` and `linux/arm64` manifests under the same immutable revision. The target refuses to overwrite an existing tag and does not create a `latest` tag.
+This repository publishes no images: `make push`, `make market-push`, `make bwrap-push`, `make ungoogled-push`, and the `.github/workflows/publish-*.yml` workflows are retired. The workflows keep their definition only as a historical record and fail on their first step if dispatched. For multi-architecture output use `make multiarch-build`, which produces the `linux/amd64` and `linux/arm64` manifest locally without pushing:
 
-The optional market variant has a separate `make market-push` target. It publishes only the dual-architecture tag carrying the `-market.1` suffix and never changes the default image.
+```bash
+IMAGE=registry.example.internal/dsh/deepseek-harness make multiarch-build
+```
 
-The [Mirror Docker Hub images to GHCR](.github/workflows/publish-ghcr.yml) workflow creates a carbon copy of an existing Docker Hub manifest in GHCR without rebuilding the image. Publishing a GitHub Release whose tag starts with `image-v` mirrors the base tag; maintainers can also dispatch it with an explicit version and include the `-market.1` variant. It compares every source and target platform-manifest digest after the copy and never creates `latest`.
+To distribute to your own cluster, push to your own namespace yourself, or import the local image with `kind load docker-image` / `minikube image load`.
 
 Do not install an unbounded `latest` tag. Release-candidate behavior changes quickly, and exact versions make bugs reproducible.
 
@@ -472,9 +485,9 @@ See [SECURITY.md](SECURITY.md) before changing any network or privilege setting.
 Run at least these checks for every DSH upgrade:
 
 ```bash
-docker run --rm runzhliu/deepseek-harness:0.2.1-rc.5-r1 --version
+docker run --rm deepseek-harness:0.2.1-rc.5-r1 --version
 
-docker run --rm --entrypoint dsh runzhliu/deepseek-harness:0.2.1-rc.5-r1 \
+docker run --rm --entrypoint dsh deepseek-harness:0.2.1-rc.5-r1 \
   web --patch /opt/deepseek-harness/web.cordis.patch.yml --dump-config
 
 docker compose up -d

@@ -1,5 +1,7 @@
-IMAGE ?= docker.io/runzhliu/deepseek-harness
-GHCR_IMAGE ?= ghcr.io/runzhliu/deepseek-harness
+# This repository does not publish images. Build them locally; the default
+# namespace is a plain local name, not a registry path. Override IMAGE when you
+# want to load it into a private registry your own cluster can pull from.
+IMAGE ?= deepseek-harness
 DSH_VERSION ?= 0.2.1-rc.5
 IMAGE_VERSION ?= $(DSH_VERSION)-r1
 NODE_IMAGE ?= docker.io/library/node:24-trixie
@@ -21,27 +23,27 @@ PLATFORMS ?= linux/amd64,linux/arm64
 help:
 	@echo "build            Build the local platform image"
 	@echo "multiarch-build  Build both release platforms without pushing"
-	@echo "push             Build and push the versioned multi-platform image (or dispatch publish-dockerhub.yml)"
-	@echo "pull             Pull the published image"
-	@echo "ghcr-pull        Pull the GHCR mirror of the published image"
+	@echo "push             Retired: this repository does not publish images"
+	@echo "pull             Retired: images are built locally"
+	@echo "ghcr-pull        Retired: there is no GHCR mirror"
 	@echo "bwrap-build      Build the opt-in bubblewrap sandbox variant"
-	@echo "bwrap-push       Build and push its versioned multi-platform image"
+	@echo "bwrap-push       Retired: build local variant images only"
 	@echo "bwrap-smoke      Verify workspace writes and denial outside it"
 	@echo "ungoogled-build  Build the privacy-focused Chromium variant"
-	@echo "ungoogled-push   Build and push its versioned multi-platform image"
+	@echo "ungoogled-push   Retired: build local variant images only"
 	@echo "ungoogled-smoke  Test Harness/noVNC and reject GCM port 5228 activity"
 	@echo "market-build     Build the optional community-market image"
-	@echo "market-push      Build and push its versioned multi-platform image"
+	@echo "market-push      Retired: build local variant images only"
 	@echo "up/down/logs     Manage the Compose service"
 	@echo "podman-up/down   Manage the rootless Podman Compose deployment"
 	@echo "podman-smoke     Test bind ownership, Web health, and loopback ports under rootless Podman"
 	@echo "verify           Validate Compose and Helm rendering"
 	@echo "plugin-check     Validate and dry-pack the browser plugin"
-	@echo "dockerhub-check  Render and validate the Docker Hub overview"
+	@echo "dockerhub-check  Render README locally (no Docker Hub sync; publishing disabled)"
 	@echo "version-check    Verify pinned versions across build and deployment files"
 	@echo "upstream-check   Compare the pinned DSH version with GitHub and npm"
 	@echo "smoke            Exercise CLI, config, PTY, and Web startup"
-	@echo "inspect          Inspect the remote multi-platform manifest"
+	@echo "inspect          Retired: there is no remotely published manifest"
 
 build:
 	docker build --pull --build-arg DSH_VERSION=$(DSH_VERSION) --build-arg IMAGE_VERSION=$(IMAGE_VERSION) --build-arg IMAGE_REVISION=$$(git describe --always --dirty) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg PNPM_VERSION=$(PNPM_VERSION) --tag $(IMAGE):$(IMAGE_VERSION) .
@@ -50,24 +52,32 @@ multiarch-build:
 	docker buildx build --platform $(PLATFORMS) --build-arg DSH_VERSION=$(DSH_VERSION) --build-arg IMAGE_VERSION=$(IMAGE_VERSION) --build-arg IMAGE_REVISION=$$(git describe --always --dirty) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg PNPM_VERSION=$(PNPM_VERSION) --tag $(IMAGE):$(IMAGE_VERSION) .
 
 push:
-	@if docker buildx imagetools inspect $(IMAGE):$(IMAGE_VERSION) >/dev/null 2>&1; then echo "refusing to overwrite existing image tag: $(IMAGE):$(IMAGE_VERSION)" >&2; exit 1; fi
-	docker buildx build --platform $(PLATFORMS) --build-arg DSH_VERSION=$(DSH_VERSION) --build-arg IMAGE_VERSION=$(IMAGE_VERSION) --build-arg IMAGE_REVISION=$$(git describe --always --dirty) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg PNPM_VERSION=$(PNPM_VERSION) --tag $(IMAGE):$(IMAGE_VERSION) --push .
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 pull:
-	docker pull $(IMAGE):$(IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 ghcr-pull:
-	docker pull $(GHCR_IMAGE):$(IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 bwrap-build:
 	docker build --pull --file Dockerfile.bwrap --build-arg BASE_IMAGE=$(IMAGE):$(IMAGE_VERSION) --build-arg BWRAP_IMAGE_VERSION=$(BWRAP_IMAGE_VERSION) --tag $(IMAGE):$(BWRAP_IMAGE_VERSION) .
 
 bwrap-push:
-	@if docker buildx imagetools inspect $(IMAGE):$(BWRAP_IMAGE_VERSION) >/dev/null 2>&1; then echo "refusing to overwrite existing image tag: $(IMAGE):$(BWRAP_IMAGE_VERSION)" >&2; exit 1; fi
-	docker buildx build --platform $(PLATFORMS) --file Dockerfile.bwrap --build-arg BASE_IMAGE=$(IMAGE):$(IMAGE_VERSION) --build-arg BWRAP_IMAGE_VERSION=$(BWRAP_IMAGE_VERSION) --tag $(IMAGE):$(BWRAP_IMAGE_VERSION) --push .
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 bwrap-pull:
-	docker pull $(IMAGE):$(BWRAP_IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 ungoogled-build:
 	docker build --pull --build-arg DSH_VERSION=$(DSH_VERSION) --build-arg IMAGE_VERSION=$(UNGOOGLED_IMAGE_VERSION) --build-arg IMAGE_REVISION=$$(git describe --always --dirty) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg PNPM_VERSION=$(PNPM_VERSION) --build-arg CHROMIUM_FLAVOR=ungoogled --build-arg UNGOOGLED_CHROMIUM_VERSION=$(UNGOOGLED_CHROMIUM_VERSION) --build-arg UNGOOGLED_CHROMIUM_AMD64_SHA256=$(UNGOOGLED_CHROMIUM_AMD64_SHA256) --build-arg UNGOOGLED_CHROMIUM_ARM64_SHA256=$(UNGOOGLED_CHROMIUM_ARM64_SHA256) --tag $(IMAGE):$(UNGOOGLED_IMAGE_VERSION) .
@@ -76,21 +86,27 @@ ungoogled-multiarch-build:
 	docker buildx build --platform $(PLATFORMS) --build-arg DSH_VERSION=$(DSH_VERSION) --build-arg IMAGE_VERSION=$(UNGOOGLED_IMAGE_VERSION) --build-arg IMAGE_REVISION=$$(git describe --always --dirty) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg PNPM_VERSION=$(PNPM_VERSION) --build-arg CHROMIUM_FLAVOR=ungoogled --build-arg UNGOOGLED_CHROMIUM_VERSION=$(UNGOOGLED_CHROMIUM_VERSION) --build-arg UNGOOGLED_CHROMIUM_AMD64_SHA256=$(UNGOOGLED_CHROMIUM_AMD64_SHA256) --build-arg UNGOOGLED_CHROMIUM_ARM64_SHA256=$(UNGOOGLED_CHROMIUM_ARM64_SHA256) --tag $(IMAGE):$(UNGOOGLED_IMAGE_VERSION) .
 
 ungoogled-push:
-	@if docker buildx imagetools inspect $(IMAGE):$(UNGOOGLED_IMAGE_VERSION) >/dev/null 2>&1; then echo "refusing to overwrite existing image tag: $(IMAGE):$(UNGOOGLED_IMAGE_VERSION)" >&2; exit 1; fi
-	docker buildx build --platform $(PLATFORMS) --build-arg DSH_VERSION=$(DSH_VERSION) --build-arg IMAGE_VERSION=$(UNGOOGLED_IMAGE_VERSION) --build-arg IMAGE_REVISION=$$(git describe --always --dirty) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg PNPM_VERSION=$(PNPM_VERSION) --build-arg CHROMIUM_FLAVOR=ungoogled --build-arg UNGOOGLED_CHROMIUM_VERSION=$(UNGOOGLED_CHROMIUM_VERSION) --build-arg UNGOOGLED_CHROMIUM_AMD64_SHA256=$(UNGOOGLED_CHROMIUM_AMD64_SHA256) --build-arg UNGOOGLED_CHROMIUM_ARM64_SHA256=$(UNGOOGLED_CHROMIUM_ARM64_SHA256) --tag $(IMAGE):$(UNGOOGLED_IMAGE_VERSION) --push .
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 ungoogled-pull:
-	docker pull $(IMAGE):$(UNGOOGLED_IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 market-build:
 	docker build --pull --file Dockerfile.market --build-arg BASE_IMAGE=$(IMAGE):$(IMAGE_VERSION) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg DSH_MARKET_VERSION=$(DSH_MARKET_VERSION) --build-arg MARKET_IMAGE_VERSION=$(MARKET_IMAGE_VERSION) --tag $(IMAGE):$(MARKET_IMAGE_VERSION) .
 
 market-push:
-	@if docker buildx imagetools inspect $(IMAGE):$(MARKET_IMAGE_VERSION) >/dev/null 2>&1; then echo "refusing to overwrite existing image tag: $(IMAGE):$(MARKET_IMAGE_VERSION)" >&2; exit 1; fi
-	docker buildx build --platform $(PLATFORMS) --file Dockerfile.market --build-arg BASE_IMAGE=$(IMAGE):$(IMAGE_VERSION) --build-arg NODE_IMAGE=$(NODE_IMAGE) --build-arg DSH_MARKET_VERSION=$(DSH_MARKET_VERSION) --build-arg MARKET_IMAGE_VERSION=$(MARKET_IMAGE_VERSION) --tag $(IMAGE):$(MARKET_IMAGE_VERSION) --push .
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 market-pull:
-	docker pull $(IMAGE):$(MARKET_IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 up:
 	docker compose up --detach --no-build
@@ -136,7 +152,7 @@ dockerhub-check:
 	bash scripts/render-dockerhub-readme.sh README.md /dev/null
 
 version-check:
-	./scripts/check-version-consistency.sh $(DSH_VERSION) $(IMAGE_VERSION) $(PNPM_VERSION) $(DSH_MARKET_VERSION) $(MARKET_IMAGE_VERSION) $(BROWSER_PLUGIN_VERSION) $(UNGOOGLED_CHROMIUM_VERSION) $(UNGOOGLED_IMAGE_VERSION) $(UNGOOGLED_CHROMIUM_AMD64_SHA256) $(UNGOOGLED_CHROMIUM_ARM64_SHA256) $(BWRAP_IMAGE_VERSION)
+	./scripts/check-version-consistency.sh $(DSH_VERSION) $(IMAGE_VERSION) $(PNPM_VERSION) $(DSH_MARKET_VERSION) $(MARKET_IMAGE_VERSION) $(BROWSER_PLUGIN_VERSION) $(UNGOOGLED_CHROMIUM_VERSION) $(UNGOOGLED_IMAGE_VERSION) $(UNGOOGLED_CHROMIUM_AMD64_SHA256) $(UNGOOGLED_CHROMIUM_ARM64_SHA256) $(BWRAP_IMAGE_VERSION) $(IMAGE)
 
 verify: compose-check helm-check plugin-check dockerhub-check version-check
 
@@ -169,16 +185,26 @@ market-smoke:
 	./scripts/smoke.sh $(IMAGE):$(MARKET_IMAGE_VERSION) $(DSH_VERSION) $(PNPM_VERSION) $(DSH_MARKET_VERSION)
 
 inspect:
-	docker buildx imagetools inspect $(IMAGE):$(IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 ghcr-inspect:
-	docker buildx imagetools inspect $(GHCR_IMAGE):$(IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 market-inspect:
-	docker buildx imagetools inspect $(IMAGE):$(MARKET_IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 ungoogled-inspect:
-	docker buildx imagetools inspect $(IMAGE):$(UNGOOGLED_IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
 
 bwrap-inspect:
-	docker buildx imagetools inspect $(IMAGE):$(BWRAP_IMAGE_VERSION)
+	@echo "$@ is retired: this repository does not publish images." >&2
+	@echo "Build locally instead (make build / make market-build / make bwrap-build / make ungoogled-build) and load it into your own registry or cluster." >&2
+	@exit 1
